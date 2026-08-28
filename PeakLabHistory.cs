@@ -214,8 +214,10 @@ public static class PeakLabHistory
         pr.offsetMin = Vector2.zero;
         pr.offsetMax = Vector2.zero;
         Canvas cv = _panel.AddComponent<Canvas>();
+        Canvas parentCv = canvasRoot.GetComponent<Canvas>();
         cv.overrideSorting = true;
-        cv.sortingOrder = 500;
+        cv.sortingOrder = (parentCv != null ? parentCv.sortingOrder : 0) + 100;
+        if (parentCv != null) cv.sortingLayerID = parentCv.sortingLayerID;
         _panel.AddComponent<GraphicRaycaster>();
         Image dim = _panel.AddComponent<Image>();
         dim.color = new Color(0f, 0f, 0f, 0.55f);

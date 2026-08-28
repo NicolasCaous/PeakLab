@@ -19,7 +19,7 @@ using UnityEngine.Events;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
-[BepInPlugin("nicolas.peaklab", "PeakLab", "1.2.1")]
+[BepInPlugin("nicolas.peaklab", "PeakLab", "1.2.2")]
 public class PeakLabPlugin : BaseUnityPlugin
 {
     internal static ManualLogSource Log;
@@ -100,7 +100,7 @@ public class PeakLabPlugin : BaseUnityPlugin
                 new HarmonyMethod(typeof(PeakLabPlugin).GetMethod("StartGamePrefix",
                     BindingFlags.Static | BindingFlags.NonPublic)), null);
             SceneManager.sceneLoaded += OnSceneLoaded;
-            Log.LogInfo("PeakLab 1.2.1 pronto");
+            Log.LogInfo("PeakLab 1.2.2 pronto");
         }
         catch (Exception e)
         {
@@ -194,13 +194,17 @@ public class PeakLabPlugin : BaseUnityPlugin
         abr.anchoredPosition = new Vector2(W * 0.015f, H * 0.235f);
         abr.sizeDelta = new Vector2(W * 0.97f, H * 0.62f);
         Image abgImg = advBg.AddComponent<Image>();
-        Image boxImg = box.GetComponent<Image>();
-        if (boxImg != null && boxImg.sprite != null)
+        Image srcPanel = null;
+        Transform tp = bp.transform.Find("BoardingPass/Panel");
+        if (tp != null) srcPanel = tp.GetComponent<Image>();
+        if (srcPanel != null && srcPanel.sprite != null)
         {
-            abgImg.sprite = boxImg.sprite;
-            abgImg.type = boxImg.type;
+            // o corpo do ticket e' o unico sprite de papel solido de verdade
+            abgImg.sprite = srcPanel.sprite;
+            abgImg.type = srcPanel.type;
+            abgImg.color = Color.white;
         }
-        abgImg.color = new Color(0.955f, 0.935f, 0.885f, 1f);
+        else abgImg.color = new Color(0.955f, 0.935f, 0.885f, 1f);
         _advRows.Add(advBg);
 
         MakeCycler(bp, box, "MONTANHA", MountainOpts, CfgMountain,
