@@ -213,7 +213,7 @@ public class PeakReconPlugin : BaseUnityPlugin
             }
             if (o.fitMesh != null) sb.AppendLine("      fitMesh=" + o.fitMesh.name);
             DumpMat("fitMaterial", o.fitMaterial, sb, texDir, exportTex, label + "_" + i + "_" + o.name);
-            DumpMat("fitMaterialShoes", o.fitMaterialShoes, sb, texDir, false, null);
+            DumpMat("fitMaterialShoes", o.fitMaterialShoes, sb, texDir, exportTex, label + "_" + i + "_" + o.name + "_shoes");
             DumpMat("fitMaterialOverridePants", o.fitMaterialOverridePants, sb, texDir, false, null);
             DumpMat("fitMaterialOverrideHat", o.fitMaterialOverrideHat, sb, texDir, false, null);
             if (o.overrideHat) sb.AppendLine("      overrideHat -> index " + o.overrideHatIndex);

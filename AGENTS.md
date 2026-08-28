@@ -208,6 +208,21 @@ O daily do vanilla nunca re-sorteia nada disso.
   remap por família de cor em HSV (preserva sombreado pintado), clone-stamp para
   apagar emblemas, estrela desenhada por polígono. Iterar: gerar → build → autopilot
   `TestPassport=true` → ver `recon\passport_test.png` e `recon\dummy_rt.png`.
+- **Pipeline de mapeamento UV** (para saber que região do atlas cai em cada parte
+  do corpo): vestir o boneco com `UVGradient_atlas.png` (R=coluna, G=linha, B=0
+  como marca d'água), `UnlitDummy=true` no autotest (troca shader por UI/Default →
+  cores puras, sem luz da cena; o autotest também afasta a `dummyCamera` p/ corpo
+  inteiro), e decodificar o render com `tools/DecodeUV.cs`. ATENÇÃO: filtragem
+  bilinear/mip gera decodes fantasma — confirme SEMPRE com um render unlit da
+  textura final antes de confiar no mapa.
+- **Mapa UV do atlas de fit (verificado no render)**: "quadro" com moldura
+  (x718-908, y40-262) = gola + patches do peito (espelhado nos 2 lados); faixa
+  superior central (x435-705, y0-58) = topo do peito/gola; região listrada branca
+  (x448-972, y595+) = MEIÃO (ribs verticais; não é a saia!); montanha amarela
+  (712,450) = emblema das COSTAS; bloco "janela" (x62-348, y282-622) = sem uso
+  visível no fit Shorts (provável gorro/saia); gravata = verde-escuro do canto
+  inferior esquerdo (x0-437, y840+); meião NÃO vem do material dos sapatos (o
+  `Scouts Tex pack 1` é só o sapato em si).
 
 ## 4. Componentes do repo
 

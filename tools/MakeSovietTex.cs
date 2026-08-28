@@ -21,20 +21,45 @@ class MakeSovietTex
         string outDir = args[1];
         Directory.CreateDirectory(outDir);
 
-        // atlas 1024x1024 do uniforme (regiao do emblema de montanha vira estrela)
+        // atlas 1024x1024 do uniforme. Regioes confirmadas pelo mapa UV
+        // (tools\DecodeUV.cs + render unlit do boneco):
+        //   x718-908 y40-262  = ombros/gola direita  -> patente vermelha + estrela dourada
+        //   x435-705 y0-58    = topo do peito/gola    -> faixa vermelha
+        //   x62-348  y282-622 = meiao ("janela")      -> calca caqui + cano de coturno preto
+        //   x0-437   y840+    = gravata               -> vermelha
+        //   montanha (712,450) = emblema das COSTAS   -> estrela vermelha
         using (Bitmap atlas = new Bitmap(Path.Combine(texDir, "fits_14_Fit_Scoutmaster_Shorts_mat.png")))
         {
             // apaga a montanha clonando camisa limpa da esquerda (mesma faixa de y)
             CloneStamp(atlas, 635, 370, 810, 525, -190, 0);
             Remap(atlas, 0, 820, 440, 1023);
-            DrawStar(atlas, 712f, 450f, 74f);
+            // gola: faixa vermelha no topo do peito
+            PaintRegion(atlas, 435, 0, 705, 58, 0.0, 0.70, 0.55, 0.18, true);
+            // patente (pogony): vermelho dentro da moldura escura do "quadro"
+            PaintRegion(atlas, 718, 40, 908, 262, 0.0, 0.70, 0.55, 0.18, true);
+            // meiao -> calca caqui (em cima) + cano de coturno preto (embaixo).
+            // O meiao usa a regiao listrada branca (confirmado no render unlit);
+            // o bloco "janela" recebe o mesmo tratamento por seguranca (sem uso visivel)
+            PaintRegion(atlas, 62, 282, 348, 455, 0.15, 0.45, 0.60, 0.12, false);
+            PaintRegion(atlas, 62, 455, 348, 625, 0.08, 0.15, 0.12, 0.05, false);
+            PaintRegion(atlas, 448, 598, 972, 800, 0.15, 0.45, 0.60, 0.12, false);
+            PaintRegion(atlas, 448, 800, 972, 1020, 0.08, 0.15, 0.12, 0.05, false);
+            // estrela vermelha nas costas (antigo emblema de montanha)
+            DrawStar(atlas, 712f, 450f, 74f,
+                Color.FromArgb(255, 178, 34, 34), Color.FromArgb(255, 110, 16, 16));
+            // estrela dourada na patente do ombro
+            DrawStar(atlas, 818f, 152f, 52f,
+                Color.FromArgb(255, 214, 176, 56), Color.FromArgb(255, 120, 90, 20));
             atlas.Save(Path.Combine(outDir, "FitSoviet_atlas.png"), ImageFormat.Png);
         }
-        // icone 256x256 do passaporte (estrela no peito esquerdo)
+        // icone 256x256 do passaporte (estrela no peito + ombreiras vermelhas)
         using (Bitmap icon = new Bitmap(Path.Combine(texDir, "fits_14_Fit_Scoutmaster_Shorts_tex.png")))
         {
             Remap(icon, 100, 45, 155, 160);
-            DrawStar(icon, 88f, 95f, 18f);
+            PaintRegion(icon, 52, 38, 96, 56, 0.0, 0.70, 0.55, 0.18, true);
+            PaintRegion(icon, 158, 38, 202, 56, 0.0, 0.70, 0.55, 0.18, true);
+            DrawStar(icon, 88f, 95f, 18f,
+                Color.FromArgb(255, 178, 34, 34), Color.FromArgb(255, 110, 16, 16));
             icon.Save(Path.Combine(outDir, "FitSoviet_icon.png"), ImageFormat.Png);
         }
         // capacete: MedicHelmet ja e verde-oliva; troca o coracao por estrela
@@ -43,6 +68,47 @@ class MakeSovietTex
             CloneStamp(helm, 340, 365, 720, 720, -330, 0);
             DrawStar(helm, 528f, 530f, 118f);
             helm.Save(Path.Combine(outDir, "SovietHelmet_tex.png"), ImageFormat.Png);
+        }
+        // grade de debug UV: 8x8 celulas rotuladas A1..H8 para descobrir que regiao
+        // do atlas cai em cada parte do corpo (vestir via autopilot e fotografar)
+        using (Bitmap grid = new Bitmap(1024, 1024))
+        {
+            Color[] cols = new Color[]
+            {
+                Color.Red, Color.Lime, Color.Blue, Color.Yellow,
+                Color.Magenta, Color.Cyan, Color.Orange, Color.White
+            };
+            using (Graphics gr = Graphics.FromImage(grid))
+            using (Font f = new Font("Arial", 22, FontStyle.Bold))
+            {
+                for (int cy = 0; cy < 8; cy++)
+                {
+                    for (int cx = 0; cx < 8; cx++)
+                    {
+                        Color cc = cols[(cx + cy) % 8];
+                        using (Brush b = new SolidBrush(cc))
+                            gr.FillRectangle(b, cx * 128, cy * 128, 128, 128);
+                        string label = "" + (char)('A' + cy) + (cx + 1);
+                        gr.DrawString(label, f, Brushes.Black, cx * 128 + 6, cy * 128 + 6);
+                        gr.DrawString(label, f, Brushes.Black, cx * 128 + 60, cy * 128 + 88);
+                    }
+                }
+            }
+            grid.Save(Path.Combine(outDir, "UVGrid_atlas.png"), ImageFormat.Png);
+        }
+        // gradiente UV: R=coluna, G=linha, B=0 (marca d'agua). Um pixel do render
+        // unlit decodifica direto para a posicao no atlas (ver tools\DecodeUV.cs)
+        using (Bitmap grad = new Bitmap(1024, 1024))
+        {
+            for (int y = 0; y < 1024; y++)
+            {
+                for (int x = 0; x < 1024; x++)
+                {
+                    grad.SetPixel(x, y, Color.FromArgb(255, (int)(x * 255.0 / 1023.0),
+                                                       (int)(y * 255.0 / 1023.0), 0));
+                }
+            }
+            grad.Save(Path.Combine(outDir, "UVGradient_atlas.png"), ImageFormat.Png);
         }
         Console.WriteLine("ok: FitSoviet_atlas.png + FitSoviet_icon.png em " + outDir);
         return 0;
@@ -88,8 +154,9 @@ class MakeSovietTex
                 }
                 else if (marrom)
                 {
-                    // camisa marrom -> caqui amarelado (referencia: gimnastyorka)
-                    bmp.SetPixel(x, y, FromHsv(0.155, 0.38 + s * 0.20, Math.Min(1.0, v * 1.12), c.A));
+                    // camisa marrom -> caqui esverdeado CLARO (levanta os tons escuros
+                    // para nao confundir com o marrom original sob luz quente)
+                    bmp.SetPixel(x, y, FromHsv(0.175, 0.40 + s * 0.15, Math.Min(1.0, 0.22 + v * 0.85), c.A));
                 }
                 else if (verde && v < 0.35 && x >= tx0 && x <= tx1 && y >= ty0 && y <= ty1)
                 {
@@ -98,8 +165,8 @@ class MakeSovietTex
                 }
                 else if (verde)
                 {
-                    // cinto/calcao verdes -> verde-oliva militar
-                    bmp.SetPixel(x, y, FromHsv(0.19, s * 0.65, v * 0.88, c.A));
+                    // cinto/calcao verdes -> caqui um tom abaixo da camisa (referencia)
+                    bmp.SetPixel(x, y, FromHsv(0.155, s * 0.55, Math.Min(1.0, 0.10 + v * 0.85), c.A));
                 }
                 else if (claro)
                 {
@@ -113,6 +180,12 @@ class MakeSovietTex
 
     static void DrawStar(Bitmap bmp, float cx, float cy, float radius)
     {
+        DrawStar(bmp, cx, cy, radius,
+            Color.FromArgb(255, 178, 34, 34), Color.FromArgb(255, 110, 16, 16));
+    }
+
+    static void DrawStar(Bitmap bmp, float cx, float cy, float radius, Color fillC, Color edgeC)
+    {
         PointF[] pts = new PointF[10];
         double rot = -Math.PI / 2.0; // ponta para cima
         for (int i = 0; i < 10; i++)
@@ -125,12 +198,31 @@ class MakeSovietTex
         using (Graphics gr = Graphics.FromImage(bmp))
         {
             gr.SmoothingMode = SmoothingMode.AntiAlias;
-            using (Brush fill = new SolidBrush(Color.FromArgb(255, 178, 34, 34)))
-            using (Pen edge = new Pen(Color.FromArgb(255, 110, 16, 16), Math.Max(2f, radius * 0.08f)))
+            using (Brush fill = new SolidBrush(fillC))
+            using (Pen edge = new Pen(edgeC, Math.Max(2f, radius * 0.08f)))
             {
                 edge.LineJoin = LineJoin.Round;
                 gr.FillPolygon(fill, pts);
                 gr.DrawPolygon(edge, pts);
+            }
+        }
+    }
+
+    // recolore um retangulo do atlas preservando o sombreado (v do pixel);
+    // skipDark preserva contornos escuros (ex.: moldura da patente)
+    static void PaintRegion(Bitmap bmp, int x0, int y0, int x1, int y1,
+                            double h, double s, double vmul, double vadd, bool skipDark)
+    {
+        for (int y = y0; y <= y1 && y < bmp.Height; y++)
+        {
+            for (int x = x0; x <= x1 && x < bmp.Width; x++)
+            {
+                Color c = bmp.GetPixel(x, y);
+                if (c.A < 8) continue;
+                int max = Math.Max(c.R, Math.Max(c.G, c.B));
+                double v = max / 255.0;
+                if (skipDark && v < 0.30) continue;
+                bmp.SetPixel(x, y, FromHsv(h, s, Math.Min(1.0, v * vmul + vadd), c.A));
             }
         }
     }

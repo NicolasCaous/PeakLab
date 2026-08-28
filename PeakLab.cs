@@ -19,7 +19,7 @@ using UnityEngine.Events;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
-[BepInPlugin("nicolas.peaklab", "PeakLab", "1.3.0")]
+[BepInPlugin("nicolas.peaklab", "PeakLab", "1.3.1")]
 public class PeakLabPlugin : BaseUnityPlugin
 {
     internal static ManualLogSource Log;
@@ -111,7 +111,7 @@ public class PeakLabPlugin : BaseUnityPlugin
                 new HarmonyMethod(typeof(PeakLabPlugin).GetMethod("SetCustomForRefPrefix",
                     BindingFlags.Static | BindingFlags.NonPublic)), null);
             SceneManager.sceneLoaded += OnSceneLoaded;
-            Log.LogInfo("PeakLab 1.3.0 pronto");
+            Log.LogInfo("PeakLab 1.3.1 pronto");
         }
         catch (Exception e)
         {

@@ -26,6 +26,7 @@ public class PeakAutoTestPlugin : BaseUnityPlugin
     private ConfigEntry<bool> _testUI;
     private ConfigEntry<bool> _airportOnly;
     private ConfigEntry<bool> _testPassport;
+    private ConfigEntry<bool> _unlitDummy;
     private bool _soloClicked;
     private bool _boarded;
 
@@ -41,6 +42,7 @@ public class PeakAutoTestPlugin : BaseUnityPlugin
         _testUI = Config.Bind("AutoTest", "TestBoardingUI", false, "Abre e fecha a boarding pass antes de embarcar (testa a UI injetada)");
         _airportOnly = Config.Bind("AutoTest", "AirportOnly", false, "Para no Airport, espera QuitAfterSeconds e fecha (nao embarca)");
         _testPassport = Config.Bind("AutoTest", "TestPassport", false, "No Airport: veste o Fit_Soviet + bone, abre o passaporte, tira screenshot e fecha");
+        _unlitDummy = Config.Bind("AutoTest", "UnlitDummy", false, "No TestPassport: boneco em shader unlit (leitura de UV, cores puras da textura)");
         if (!_enabled.Value)
         {
             Log.LogInfo("[AutoTest] desligado");
@@ -223,6 +225,41 @@ public class PeakAutoTestPlugin : BaseUnityPlugin
         }
         else Log.LogWarning("[AutoTest] PassportManager.instance nulo");
         yield return new WaitForSeconds(3f);
+        // afasta a camera do boneco para enquadrar o corpo inteiro no render
+        try
+        {
+            if (pm != null && pm.dummyCamera != null)
+            {
+                Transform ct = pm.dummyCamera.transform;
+                ct.position = ct.position - ct.forward * 1.6f - Vector3.up * 0.45f;
+                pm.dummyCamera.fieldOfView = 55f;
+            }
+            // shader unlit em tudo do boneco: cores puras da textura, sem luz da cena
+            if (pm != null && pm.dummy != null && _unlitDummy.Value)
+            {
+                Shader unlit = Shader.Find("UI/Default");
+                if (unlit == null) unlit = Shader.Find("Unlit/Texture");
+                if (unlit != null)
+                {
+                    Renderer[] all = pm.dummy.GetComponentsInChildren<Renderer>(true);
+                    for (int ri = 0; ri < all.Length; ri++)
+                    {
+                        Material[] ms = all[ri].materials;
+                        for (int mi = 0; mi < ms.Length; mi++)
+                        {
+                            if (ms[mi] == null) continue;
+                            Texture keep = ms[mi].mainTexture;
+                            ms[mi].shader = unlit;
+                            ms[mi].mainTexture = keep;
+                        }
+                    }
+                    Log.LogInfo("[AutoTest] boneco em modo unlit para leitura de UV");
+                }
+                else Log.LogWarning("[AutoTest] nenhum shader unlit disponivel");
+            }
+        }
+        catch (Exception e) { Log.LogWarning("[AutoTest] ajuste de camera/shader falhou: " + e.Message); }
+        yield return new WaitForSeconds(1f);
         // prova extra: salva o render do boneco de preview direto da camera dele
         try
         {
