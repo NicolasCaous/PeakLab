@@ -1,7 +1,18 @@
-# PeakRecon
+# PeakRecon + PeakLab
 
-Plugin BepInEx de **reconhecimento passivo** para PEAK (testado na v1.35.a, depot antigo via Steam).
-Não altera nada do jogo: apenas extrai informação de debug para arquivos de texto.
+Mods BepInEx para estudar e destravar o sistema de mapas do PEAK antigo
+(testado na v1.35.a, depot antigo via Steam).
+
+- **PeakRecon** — reconhecimento passivo: extrai informação de debug para arquivos de texto.
+- **PeakLab** — experimento ativo: campo de **SEED** + botão de aleatório (`?`) na boarding
+  pass do aeroporto; com seed definida, re-sorteia as variantes de bioma da ilha ao carregar
+  (e, opcionalmente via config, roda `Clear()`+`Generate()` da `LevelGeneration`).
+  Espiões Harmony logam quem chama a pipeline de geração em runtime.
+  Config em `BepInEx/config/nicolas.peaklab.cfg`. **v0.1 é para jogo solo** — sync de seed
+  em multiplayer vem depois.
+- **tools/DumpApi** — inspetor offline: imprime a API de qualquer classe do jogo
+  direto do `Assembly-CSharp.dll`, sem abrir o jogo.
+  Uso: `DumpApi.exe <pasta Managed> <trecho-do-nome> [...]`
 
 Primeira fase de um projeto maior: entender o sistema de mapas do PEAK antigo
 (6 cenas fixas, `Level_0`–`Level_5`, rotação diária por `LevelIndex % 6`) e,
