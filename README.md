@@ -1,57 +1,91 @@
-# PeakRecon + PeakLab
+# PeakLab — mapas novos para o PEAK antigo (v1.35.a)
 
-Mods BepInEx para estudar e destravar o sistema de mapas do PEAK antigo
-(testado na v1.35.a, depot antigo via Steam).
+Conjunto de mods BepInEx que devolve variedade de mapas a versões antigas do PEAK
+(desenvolvido e testado na **v1.35.a**, depot antigo baixado via console da Steam).
 
-- **PeakRecon** — reconhecimento passivo: extrai informação de debug para arquivos de texto.
-- **PeakLab** — experimento ativo: campo de **SEED** + botão de aleatório (`?`) na boarding
-  pass do aeroporto; com seed definida, re-sorteia as variantes de bioma da ilha ao carregar
-  (e, opcionalmente via config, roda `Clear()`+`Generate()` da `LevelGeneration`).
-  Espiões Harmony logam quem chama a pipeline de geração em runtime.
-  Config em `BepInEx/config/nicolas.peaklab.cfg`. **v0.1 é para jogo solo** — sync de seed
-  em multiplayer vem depois.
-- **tools/DumpApi** — inspetor offline: imprime a API de qualquer classe do jogo
-  direto do `Assembly-CSharp.dll`, sem abrir o jogo.
-  Uso: `DumpApi.exe <pasta Managed> <trecho-do-nome> [...]`
+**O problema:** a v1.35.a tem só 6 ilhas (`Level_0`–`Level_5`) e a rotação diária é
+`LevelIndex % 6` — um loop de 6 dias, sempre com o mesmo combo de variantes que veio
+assado de fábrica em cada cena.
 
-Primeira fase de um projeto maior: entender o sistema de mapas do PEAK antigo
-(6 cenas fixas, `Level_0`–`Level_5`, rotação diária por `LevelIndex % 6`) e,
-com essa informação, construir um gerador/remixador de mapas para versões antigas.
+**A descoberta:** o maquinário de variantes dos devs veio dentro do build, dormente.
+Cada cena carrega variantes de área que o daily nunca sorteia — e um segmento de
+montanha alternativo inteiro (Alpine ↔ Mesa/deserto) esperando para ser trocado.
 
-## O que ele faz
+## PeakLab (o mod principal)
 
-Ao carregar o jogo, escreve em `PEAK\BepInEx\recon\`:
+UI injetada na boarding pass do aeroporto, no quadro de dificuldade:
 
-- `types.txt` — assinaturas completas (campos, propriedades, métodos, enums) de todas as
-  classes do jogo relacionadas a mapa/geração: `MapHandler`, `MapSegment`, `Biome*`,
-  `MapGenerator`, `LevelGeneration`, `Campfire`, `Ascent*`, `NextLevel*` etc.
-- `scene_<nome>.txt` — a cada cena carregada: instâncias dos componentes de interesse
-  (incluindo objetos inativos e prefabs em memória) com valores dos campos serializados,
-  e a hierarquia da cena (profundidade limitada).
+- **Modo simples:** campo `SEED` (digite um número) + botão `?` (seed aleatória).
+  Campo vazio = daily vanilla, comportamento original intocado.
+- **Modo avançado** (botão `AVANCADO`): seletores que ciclam opções e persistem no config:
+  - `MONTANHA`: Auto / Alpine / Mesa — troca o segmento inteiro
+    (`MapHandler.segments[slot] ↔ variantSegments[0]`, com paredes e campfires próprios)
+  - `PRAIA`: Auto / Default / SnakeBeach / BlackSand / BlueBeach / RedBeach / JellyHell
+  - `SELVA`: Auto / Default / Thorny / SkyJungle / Pillars / Ivy / Lava / Bombs
+  - `NEVE`: Auto / Default / Lava / Spiky / GeyserHell (vale quando a montanha é Alpine)
+
+Com seed definida: `Random.InitState(seed)` → `RandomizeBiomeVariants()` (determinístico,
+mesma seed = mesmo mapa) + re-sorteio dos `VariantObjectSelector` (micro-variantes do
+deserto: TumblerHell, CactusForest, TornadoHell etc.). Pins do avançado são aplicados
+por cima do sorteio. Montanha em Auto + seed = a seed decide (50/50).
+
+**v1.x é para jogo solo.** Sync multiplayer (seed via room property) está no roadmap.
+
+`FullRegenerate` no config: **não usar** — `Clear()` remove conteúdo (paredes) que
+`Generate()` não reconstrói; a ilha pode nascer vazia no oceano. Mantido para pesquisa.
+
+## Ferramentas de desenvolvimento
+
+- **PeakRecon** — recon passivo: dumpa API de classes de mapa (`types.txt`) e
+  instâncias/hierarquia por cena (`scene_*.txt`) em `BepInEx\recon\`.
+- **PeakAutoTest** — piloto automático de teste (desligado por padrão): navega
+  Pretitle → Title → Play Solo → Airport → embarque sozinho, aplica seed/cena de
+  teste, opcionalmente abre a boarding pass (testa a UI) e fecha o jogo. Permitiu
+  validar tudo sem intervenção humana.
+- **tools/DumpApi** — inspetor offline de `Assembly-CSharp.dll` por reflexão
+  (`DumpApi.exe <pasta Managed> <trecho-do-nome>`), sem abrir o jogo.
+
+## Descobertas de pesquisa (resumo)
+
+1. Ilhas são 100% baked no editor; nenhum código de geração roda em runtime no vanilla
+   (espiões Harmony em toda a pipeline: zero chamadas durante load normal).
+2. O daily antigo é `LevelIndex % 6`; o índice vem do backend
+   (`peaklogin.azurewebsites.net`), que ainda responde `VersionOkay: true` para 1.35.
+3. `Level_0/2/4` vêm com Mesa baked; `Level_1/3/5` com Alpine. As 6 cenas compartilham
+   o mesmo catálogo de variantes (17 marcadores `BiomeVariant` + 6 `VariantObject`).
+4. `RandomizeBiomeVariants()` funciona em runtime e é determinístico por seed —
+   só nunca é chamado pelo jogo nessa versão.
+5. A troca Alpine↔Mesa não tem caminho vivo no vanilla (nem `GetVariantSegmentFromBiome`
+   é chamado); feita manualmente pelo PeakLab trocando as entradas dos arrays.
+6. `Clear()`/`Generate()` são assimétricos (paredes somem) — full regen inviável por ora.
 
 ## Build
 
-Requer apenas o compilador do .NET Framework que já vem com o Windows (`csc.exe`, C# 5)
-e os DLLs do próprio jogo como referência. Ajuste o caminho do jogo em `build.bat` e rode:
+Só precisa do compilador que já vem no Windows (`csc.exe`, C# 5) + os DLLs do jogo:
 
 ```
 build.bat
 ```
 
-O script compila `PeakRecon.dll` e copia para `BepInEx\plugins\`.
+Compila `PeakRecon.dll`, `PeakLab.dll`, `PeakAutoTest.dll` (instala em `BepInEx\plugins`)
+e `tools\DumpApi.exe`. Ajuste o caminho do jogo no topo do script.
 
 ## Instalação / remoção
 
-Instalar: copiar `PeakRecon.dll` para `PEAK\BepInEx\plugins\`.
-Remover: apagar o mesmo arquivo. Não deixa nenhum outro rastro (além da pasta `BepInEx\recon\`).
+Instalar: DLLs em `PEAK\BepInEx\plugins\`. Remover: apagar as DLLs.
+Configs em `BepInEx\config\nicolas.peaklab.cfg` (e `nicolas.peakautotest.cfg`).
+
+## Requisitos
+
+- PEAK v1.35.a (depot antigo) + BepInEx 5.4.23+
+- Steam aberto e logado (o jogo não inicializa sem SteamAPI)
 
 ## Roadmap
 
-1. **Scout (este plugin)** — mapear a API real de geração embarcada no build.
-2. **Experimento** — invocar o maquinário existente (`RandomizeBiomeVariants`,
-   troca de `MapSegment` entre cenas, seeds custom) via plugin de teste.
-3. **Gerador** — plugin final: seed → mapa "novo" determinístico, sincronizável
-   entre jogadores da mesma versão.
+- Sync multiplayer da seed/escolhas via Photon room properties
+- Polir layout da UI (posições hoje são proporcionais ao box)
+- Investigar regeneração de props segura (chamar `Go()` dos steps certos, sem `Clear()` global)
+- Harvest de variantes por cena para esconder opções inexistentes
 
 ## Licença
 
