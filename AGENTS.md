@@ -1,0 +1,260 @@
+# AGENTS.md — manual de engenharia do PeakLab
+
+Documento para um agente (ou dev) **sem contexto nenhum** se apropriar deste projeto.
+Leia inteiro antes de mexer. Última atualização: 28/08/2026, commit `9ffac32` (v1.0.0 entregue).
+
+## 1. O que é isto
+
+Mods BepInEx que devolvem variedade de mapas ao **PEAK v1.35.a** (versão antiga, baixada
+por depot da Steam). Nessa versão o mapa diário é um loop de 6 cenas fixas; nós
+reativamos o maquinário de variantes que os devs deixaram dormente no build e
+construímos UI para escolher seed/biomas na boarding pass do aeroporto.
+
+Estado atual: **PeakLab 1.0.0 funciona e está validado** (solo). Dono do projeto: Nicolas
+(fala PT-BR; comunicação e commits em português). Publicado em
+https://github.com/NicolasCaous/PeakLab (MIT).
+
+## 2. Ambiente (específico desta máquina)
+
+| Item | Valor |
+|---|---|
+| Jogo | `D:\SteamLibrary\steamapps\common\PEAK` (v1.35.a, ver `version.txt`) |
+| Origem do jogo | Console Steam: `download_depot 3527290 3527291 5462070481758001186` |
+| Repo | `C:\Users\nicolas\Documents\dump\peak-recon` (git, branch `main`) |
+| Plugins instalados | `<jogo>\BepInEx\plugins\` (PeakRecon, PeakLab, PeakAutoTest + 3 de terceiros) |
+| Configs | `<jogo>\BepInEx\config\nicolas.peaklab.cfg` e `nicolas.peakautotest.cfg` |
+| Log do BepInEx | `<jogo>\BepInEx\LogOutput.log` (sobrescrito a cada execução!) |
+| Log do Unity | `C:\Users\nicolas\AppData\LocalLow\LandCrab\PEAK\Player.log` (+ `-prev`) |
+| Dumps do recon | `<jogo>\BepInEx\recon\` (`types.txt`, `scene_<nome>.txt`) |
+| Logs de teste arquivados | `<repo>\testlogs\` (fora do git) |
+| Launcher | `C:\Users\nicolas\Desktop\Jogar PEAK.bat` (abre Steam, espera login, abre jogo) |
+
+Regras operacionais críticas:
+
+- **Steam PRECISA estar aberto e logado** ou `SteamAPI_Init()` falha e o jogo abre
+  "meio morto" (cascata de NRE no `GameHandler`, jogador preso no aeroporto com loading
+  infinito). Esse era o bug original do "quebra em 24h".
+- Abrir o jogo **pelo `PEAK.exe`** (nunca pelo Steam). O Steam não atualiza a pasta
+  porque o jogo consta como desinstalado (sem `appmanifest_3527290.acf`).
+- **Não há dotnet SDK na máquina.** Compilação é com o csc do .NET Framework
+  (C# 5!): `C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe`.
+- Plugins de terceiros presentes: `peakseedpicker` (força cena, config
+  `com.turtledsr.peakseedpicker.cfg`, só `level_0..5` existem aqui), `PeakVersionBypass`,
+  `PeakOptimizer`. Não conflitam com os nossos.
+
+## 3. Como o jogo funciona por dentro (tudo verificado empiricamente)
+
+### 3.1 Mapas e rotação diária
+
+- O build tem **6 ilhas**: cenas `Level_0`–`Level_5` (nada de addressables; tudo em
+  `PEAK_Data/levelN` + `globalgamemanagers`).
+- O backend `https://peaklogin.azurewebsites.net/api/VersionCheck?version=1.35` responde
+  `{VersionOkay, LevelIndex, ...}`; `LevelIndex` é um contador de dias. A cena do dia =
+  `LevelIndex % 6` (confirmado: índice 439 → `Level_1`). `VersionOkay:true` para 1.35.
+- **Nenhum código de geração roda em runtime no vanilla.** Provado com espiões Harmony
+  em toda a pipeline (`LevelGeneration.*`, `MapGenerator.*`, `BiomeSelector.Select`,
+  `VariantObjectSelector.SelectVariations`, `WallPieceSpawner.Go`,
+  `MapHandler.DetectBiomes`, `TodaysBiomes.SetBiomes`): zero chamadas num load normal.
+  As ilhas são 100% baked no editor dos devs.
+
+### 3.2 Estrutura de uma cena de ilha
+
+```
+Map/
+  Biome_1/Beach/Beach_Segment/<variantes com marcador BiomeVariant>
+  Biome_2/Jungle/Jungle_Segment/<...>
+  Biome_3/Snow/Snow_Segment/<...>        (Alpine)
+  Biome_3/Desert/Desert_Segment/<...>    (Mesa; micro-variantes usam VariantObject)
+  (Caldera/Volcano/Peak...)
+```
+
+- `MapHandler` (singleton, `MapHandler.Instance`): campos `MapSegment[] segments`
+  (a trilha real da ilha, ~5 entradas) e `MapSegment[] variantSegments` (segmentos
+  alternativos adormecidos — aqui, 1: a montanha não usada).
+- `MapHandler.MapSegment`: `_biome (BiomeType)`, `_segmentParent (GameObject)`,
+  `_segmentCampfire`, `wallNext/wallPrevious`, `_dayNightProfile`, `hasVariant`,
+  `variantBiome`, `isVariant`. O slot da montanha tem `hasVariant=true, variantBiome=Mesa`.
+- Enums: `Segment` = Beach, Tropics, Alpine, Caldera, TheKiln, Peak (slots de progresso);
+  `Biome.BiomeType` = Shore, Tropics, Alpine, Volcano, Peak, Mesa, Colony.
+- **Streaming**: só o segmento atual fica ativo; o `MapHandler` desliga os demais de
+  `segments[]` conforme o jogo roda. `variantSegments[]` NUNCA é gerenciado (fica no
+  estado em que carregou). Avanço = campfires (`Campfire.advanceToSegment`) →
+  `MapHandler.GoToSegment(Segment)`.
+- Debug embutido útil: `MapHandler.JumpToSegment(Segment)` (estático, teleporta e ativa
+  o slot; funciona offline), `Ascents.UnlockAll()`.
+
+### 3.3 Catálogo de variantes (idêntico nas 6 cenas)
+
+| Área (pai dos marcadores) | Variantes (`BiomeVariant`, filhos diretos do `*_Segment`) |
+|---|---|
+| `Beach_Segment` | Default, SnakeBeach, BlackSand, BlueBeach, RedBeach, JellyHell |
+| `Jungle_Segment` | Default, Thorny, SkyJungle, Pillars, Ivy, Lava, Bombs |
+| `Snow_Segment` | Default, Lava, Spiky, GeyserHell |
+| `Desert_Segment` (mais fundo) | micro-variantes via `VariantObject`+`VariantObjectSelector`: ScorpionsHell, TumblerHell, CactusForest, CacusHell, DynamiteHell, TornadoHell |
+
+Baked por cena: `Level_0/2/4` vêm com **Mesa** no slot da montanha; `Level_1/3/5` com
+**Alpine**. Cada cena vem com UM combo de variantes ligado (ex.: L1 = Lava+Default+Default).
+O daily do vanilla nunca re-sorteia nada disso.
+
+### 3.4 As alavancas que funcionam (e as que não)
+
+- `LevelGeneration` (1 por cena): campo `seed`, métodos `Generate()`, `Clear()`,
+  `RandomizeBiomeVariants()`. **`RandomizeBiomeVariants()` funciona em runtime e é
+  determinístico** dado `UnityEngine.Random.InitState(seed)` antes. Liga UMA variante
+  por área e desliga as irmãs.
+- `VariantObjectSelector.SelectVariations()` — mesmo esquema para as micro-variantes
+  do deserto. Chamar por instância (4 na cena típica).
+- Troca de montanha Alpine↔Mesa: **não existe caminho vivo no vanilla**
+  (`GetVariantSegmentFromBiome` nunca é chamado). Fazemos na mão: trocar as entradas
+  `segments[slot] ↔ variantSegments[0]`, ajustar `isVariant/hasVariant`, `SetActive`
+  nos `_segmentParent` (desliga o antigo, liga o novo). Walls/campfire/dayNight vêm
+  juntos porque pertencem ao `MapSegment`. Validado em jogo.
+- **`Clear()`+`Generate()` NÃO é seguro**: `Clear()` remove conteúdo (paredes de
+  escalada) que `Generate()` não reconstrói (`WallPieceSpawner.Go` nunca é chamado
+  pelo `Generate()` — 0 hits no espião). Resultado: ilha vazia/oceano. A opção
+  `FullRegenerate` existe no config só para pesquisa, com aviso de NÃO USAR.
+  Caminho futuro promissor: chamar `Go()` dos steps certos por tipo, sem `Clear()` global.
+
+### 3.5 Fluxo de embarque e UI
+
+- Aeroporto: `AirportCheckInKiosk` (público). `StartGame(int ascent)` →
+  `LoadIslandMaster(ascent)` (decide a cena pelo `NextLevelService.Data.CurrentLevelIndex`)
+  → `BeginIslandLoadRPC(string sceneName, int ascent)` (público! aceita QUALQUER cena —
+  chamar direto funciona offline e pula a UI).
+- `BoardingPass : MenuWindow` — a UI do ticket. Campos públicos prontos:
+  `ascentTitle`/`ascentDesc` (TMP_Text, fontes do estilo manuscrito),
+  `incrementAscentButton` (fonte de clone de botão), `kiosk`, `startGameButton`.
+  Métodos: `StartGame()` (público, chamado pelo botão START), `OnOpen()`/`UpdateAscent()`
+  (privados). `MenuWindow.Show()` público NÃO dispara `OnOpen` — por isso o PeakLab
+  hooka os três (`OnOpen`, `UpdateAscent`, `MenuWindow.Show` filtrado) para injetar UI.
+- O box branco da dificuldade ("Ascent") tem ~709×237 unidades de canvas; a UI do
+  PeakLab é posicionada por frações do rect dele.
+
+## 4. Componentes do repo
+
+| Arquivo | Papel |
+|---|---|
+| `PeakLab.cs` | O mod principal (UI + motor). ~500 linhas, C# 5. |
+| `PeakRecon.cs` | Recon passivo: dumpa API (`types.txt`) e cenas (`scene_*.txt`). Sem Harmony. |
+| `PeakAutoTest.cs` | Piloto automático de teste. `Enabled=false` por padrão — SEMPRE devolver para false após testes. |
+| `tools/DumpApi.cs` | Inspetor offline de `Assembly-CSharp.dll` por reflexão. Não precisa do jogo aberto. |
+| `build.bat` | Compila tudo e instala os DLLs no jogo. |
+| `testlogs/` | Logs arquivados dos 16 runs de pesquisa (fora do git; fonte das conclusões acima). |
+
+### PeakLab por dentro (ordem importa)
+
+1. `Awake`: binds de config, patches Harmony (UI hooks + `BoardingPass.StartGame` prefix).
+2. `StartGamePrefix`: lê o campo de seed da UI → `PendingSeed` (int?; null = vanilla).
+3. `OnSceneLoaded(Level_*)` → `ApplyCustomization`:
+   a. Sem seed e sem pins → não toca em nada (vanilla puro).
+   b. Montanha: pin explícito, ou decidida por `new System.Random(seed).Next(2)` se Auto+seed → `EnsureMountain`.
+   c. Com seed: `Random.InitState(seed)` → `LevelGeneration.seed=seed` →
+      `RandomizeBiomeVariants()` → `RunVariantSelectors` (deserto).
+   d. Pins de área (`ApplyPin`): liga a variante escolhida, desliga irmãs (match por
+      `transform.parent.name == "X_Segment"`).
+   e. `LogIslandState()` + repetição em t+12s (coroutine) para ver o estado assentado.
+4. Timing: `sceneLoaded` dispara depois dos `Awake` da cena e antes dos `Start` —
+   janela perfeita (MapHandler.Instance já existe, spawners ainda não rodaram).
+
+Acesso ao jogo: métodos/campos públicos tipados (referenciamos `Assembly-CSharp.dll`);
+privados via `AccessTools` (HarmonyLib). `Resources.FindObjectsOfTypeAll` acha inativos
+(SEMPRE filtrar `gameObject.scene.IsValid()` — retorna assets/prefabs também).
+
+## 5. Como compilar
+
+`build.bat` faz tudo. Manualmente (a linha completa do PeakLab):
+
+```
+C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe -nologo -t:library -langversion:5 ^
+  -out:PeakLab.dll ^
+  -r:"<M>\UnityEngine.dll" -r:"<M>\UnityEngine.CoreModule.dll" ^
+  -r:"<M>\UnityEngine.UIModule.dll" -r:"<M>\UnityEngine.UI.dll" ^
+  -r:"<M>\Unity.TextMeshPro.dll" -r:"<M>\Assembly-CSharp.dll" ^
+  -r:"<M>\Zorro.ControllerSupport.dll" -r:"<M>\Zorro.Core.Runtime.dll" ^
+  -r:"<M>\Zorro.UI.Runtime.dll" -r:"<M>\netstandard.dll" ^
+  -r:"<B>\BepInEx.dll" -r:"<B>\0Harmony.dll" -r:System.dll -r:System.Core.dll ^
+  PeakLab.cs
+```
+
+(`<M>` = `PEAK_Data\Managed`, `<B>` = `BepInEx\core`.) Depois copiar o `.dll` para
+`BepInEx\plugins\`.
+
+Armadilhas de compilação:
+
+- **C# 5 apenas**: nada de `$"..."`, `?.`, `nameof`, out var, membros expression-bodied.
+- Erro `CS0012 tipo X definido em assembly não referenciado` → adicionar o dll citado
+  (foi assim que entraram Zorro.* e Photon*; `PeakAutoTest` precisa de
+  `PhotonUnityNetworking.dll` + `PhotonRealtime.dll` porque tipa o kiosk).
+- Warnings CS0618 (APIs obsoletas do Unity) são esperados e inofensivos.
+
+## 6. Workflow de teste automatizado (o superpoder deste projeto)
+
+O jogo pode ser testado SEM humano. Receita:
+
+```bash
+# 1. configurar o teste
+printf '[AutoTest]\nEnabled = true\nTestSeed = 777\nAscent = 0\nQuitAfterSeconds = 20\nJumpToSegment = \nSceneOverride = Level_1\nTestBoardingUI = false\n' \
+  > "/d/SteamLibrary/steamapps/common/PEAK/BepInEx/config/nicolas.peakautotest.cfg"
+# (opcional) pins do PeakLab em nicolas.peaklab.cfg
+
+# 2. lançar e esperar o jogo fechar sozinho (~70-90s por run)
+cmd //c start "" //D "D:\SteamLibrary\steamapps\common\PEAK" "D:\SteamLibrary\steamapps\common\PEAK\PEAK.exe"
+for i in $(seq 1 50); do sleep 5; tasklist //FI "IMAGENAME eq PEAK.exe" | grep -q PEAK.exe || break; done
+
+# 3. arquivar e ler
+cp "/d/SteamLibrary/steamapps/common/PEAK/BepInEx/LogOutput.log" testlogs/meu-teste.log
+grep -E "PeakLab|AutoTest" testlogs/meu-teste.log
+```
+
+Opções do AutoTest: `TestSeed` (vazio = vanilla), `SceneOverride` (`Level_N` embarca
+direto nessa cena), `JumpToSegment` (ex.: `Alpine` — teleporta aos 15s, ativa o slot),
+`TestBoardingUI` (abre/fecha a boarding pass antes de embarcar — exercita a injeção de UI),
+`QuitAfterSeconds`. O fluxo dele: Pretitle avança sozinho → clica `m_playSoloButton` do
+`MainMenuMainPage` → `kiosk.StartGame`/`BeginIslandLoadRPC` → quit.
+
+**SEMPRE deixar `Enabled = false` ao terminar** (senão o jogo do Nicolas decola sozinho —
+ele já viu "o jogo nascer num oceano infinito" durante uma bateria de testes).
+
+Interpretação de log: entradas multi-linha do BepInEx (tabelas de segmentos, stacks)
+não aparecem inteiras num grep simples — usar `grep -A8`. Linhas-chave do PeakLab:
+`montanha trocada`, `pin X = Y`, `variantes ativas: ...`, `segmentos:` (tabela com
+`(on)/(OFF)` por parent).
+
+## 7. Como investigar mais o jogo
+
+- **API de qualquer classe** (sem abrir o jogo):
+  `tools\DumpApi.exe "D:\...\PEAK_Data\Managed" NomeParcial1 NomeParcial2`
+- **Estado de cena em runtime**: PeakRecon dumpa toda cena carregada em
+  `BepInEx\recon\scene_<nome>.txt` (componentes de interesse com valores de campos +
+  hierarquia). Ajustar as listas `TypeKeys`/`SceneDumpTypes` no fonte para ampliar.
+- **Quem chama o quê**: adicionar espiões Harmony (prefix logando
+  `Environment.StackTrace`) — ver o `SpyPatch` no histórico do git (v0.1 do PeakLab,
+  commit `302c884`; removidos na v1.0 para limpar o log).
+- Não há decompilador na máquina (sem dotnet para ilspycmd). Corpos de método são caixa
+  preta — a técnica do projeto é inferir comportamento por experimento + espião.
+
+## 8. Roadmap com dicas de implementação
+
+1. **Sync multiplayer** (o mais pedido a seguir): no `StartGamePrefix` do host, gravar
+   seed+pins em `PhotonNetwork.CurrentRoom.SetCustomProperties`; nos clientes, ler em
+   `OnSceneLoaded` antes de aplicar (prioridade sobre config local). Todos precisam do
+   mod. Atenção: `Photon.Pun.PhotonNetwork` requer referenciar `PhotonUnityNetworking.dll`.
+   Testar solo é impossível — combinar com o Nicolas e um amigo.
+2. **Polir UI**: posições em `BuildUI` (frações do box). Pendente: print do Nicolas
+   para ajuste fino. Quando o painel avançado abre, pode cobrir a descrição do ascent —
+   avaliar esconder `ascentDesc` enquanto aberto.
+3. **Re-roll seguro de props**: investigar chamar `Go()`/`Add()` de `PropSpawner`s
+   individuais (ou `GoAll()`) SEM `Clear()` global; ou `Clear()` por step exceto walls.
+   Os espiões + `scene_Level_N.txt` dizem o que cada step possui.
+4. **Filtrar opções por cena**: os harvests (testlogs/harvest-level*.log) mostram o
+   catálogo por cena; hoje a UI oferece tudo sempre (pin inexistente só loga warning).
+5. **Ocultar "NEVE" quando montanha=Mesa** (só faz efeito com Alpine).
+
+## 9. Convenções do projeto
+
+- Idioma: PT-BR (código com comentários sem acento por segurança de encoding).
+- Commits: mensagem em PT + `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`.
+- Não commitar: DLLs, `testlogs/`, `*.exe` (ver `.gitignore`).
+- Publicado em https://github.com/NicolasCaous/PeakLab sob licença **MIT**.
+- O jogo é do Nicolas e o mod é para uso pessoal; nada aqui burla compra do jogo
+  (ele possui o PEAK na Steam — o SteamAPI exige a conta logada).
