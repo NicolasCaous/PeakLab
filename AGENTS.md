@@ -194,6 +194,13 @@ O daily do vanilla nunca re-sorteia nada disso.
   anexar ao array — `PeakLabSkins.ExtendRefs` faz isso (capacete soviético = clone do
   MedicHelmet[7] no índice 29), chamado por postfix em `CharacterCustomization.Awake`,
   prefix em `SetCustomizationForRef` (boneco do passaporte) e sweep no sceneLoaded.
+- O rig NÃO tem mesh de calça comprida: `fitMaterialOverridePants` só troca a
+  ESTAMPA do renderer `Shorts` (provado com o M_Scout_TropicalPants). Cobertura
+  máxima de perna = variante `isSkirt=true` (o Fit_Soviet_Shinel usa isso como
+  capote). Renderers reais do personagem: `MainMesh` com 3 slots ([0] pele,
+  [1] fitMaterial — inclui camisa E meião, [2] fitMaterialShoes) + `Shorts`/
+  `Skirt` (fitPantsMaterial). O boneco do passaporte usa os MESMOS materiais
+  (validar nele vale para o personagem, contanto que a DLL seja a mesma).
 - A escolha é salva POR ÍNDICE em `PersistentPlayerData` — remover o mod com o fit
   20 equipado deixa o save apontando para fora do catálogo (documentado no config).
 - Enum das abas do passaporte: `Customization+Type` (aninhado em `Customization`,

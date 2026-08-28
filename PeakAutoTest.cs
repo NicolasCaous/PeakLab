@@ -5,6 +5,7 @@
 using System;
 using System.Collections;
 using System.Reflection;
+using System.Text;
 using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
@@ -26,6 +27,7 @@ public class PeakAutoTestPlugin : BaseUnityPlugin
     private ConfigEntry<bool> _testUI;
     private ConfigEntry<bool> _airportOnly;
     private ConfigEntry<bool> _testPassport;
+    private ConfigEntry<string> _testFitName;
     private ConfigEntry<bool> _unlitDummy;
     private bool _soloClicked;
     private bool _boarded;
@@ -42,6 +44,7 @@ public class PeakAutoTestPlugin : BaseUnityPlugin
         _testUI = Config.Bind("AutoTest", "TestBoardingUI", false, "Abre e fecha a boarding pass antes de embarcar (testa a UI injetada)");
         _airportOnly = Config.Bind("AutoTest", "AirportOnly", false, "Para no Airport, espera QuitAfterSeconds e fecha (nao embarca)");
         _testPassport = Config.Bind("AutoTest", "TestPassport", false, "No Airport: veste o Fit_Soviet + bone, abre o passaporte, tira screenshot e fecha");
+        _testFitName = Config.Bind("AutoTest", "TestFitName", "Fit_Soviet", "Nome do fit a vestir no TestPassport");
         _unlitDummy = Config.Bind("AutoTest", "UnlitDummy", false, "No TestPassport: boneco em shader unlit (leitura de UV, cores puras da textura)");
         if (!_enabled.Value)
         {
@@ -182,17 +185,18 @@ public class PeakAutoTestPlugin : BaseUnityPlugin
         {
             for (int i = 0; i < cat.fits.Length; i++)
             {
-                if (cat.fits[i] != null && cat.fits[i].name == "Fit_Soviet") { idx = i; break; }
+                if (cat.fits[i] != null && cat.fits[i].name == _testFitName.Value) { idx = i; break; }
             }
         }
         if (idx >= 0)
         {
-            Log.LogInfo("[AutoTest] Fit_Soviet no indice " + idx + "; vestindo fit + bone (override deve trocar por capacete)");
+            Log.LogInfo("[AutoTest] " + _testFitName.Value + " no indice " + idx + "; vestindo fit + bone (override deve trocar por capacete)");
             CharacterCustomization.SetCharacterOutfit(idx);
             CharacterCustomization.SetCharacterHat(0); // o overrideHat do fit deve vencer
         }
-        else Log.LogError("[AutoTest] Fit_Soviet NAO esta no catalogo!");
+        else Log.LogError("[AutoTest] " + _testFitName.Value + " NAO esta no catalogo!");
         yield return new WaitForSeconds(1f);
+        DumpCharacterRenderers("apos vestir");
         PassportManager pm = PassportManager.instance;
         if (pm != null)
         {
@@ -224,7 +228,9 @@ public class PeakAutoTestPlugin : BaseUnityPlugin
             catch (Exception e) { Log.LogWarning("[AutoTest] OpenTab(Fit) falhou: " + e.Message); }
         }
         else Log.LogWarning("[AutoTest] PassportManager.instance nulo");
-        yield return new WaitForSeconds(3f);
+        yield return new WaitForSeconds(1f);
+        DumpCharacterRenderers("com passaporte aberto");
+        yield return new WaitForSeconds(2f);
         // afasta a camera do boneco para enquadrar o corpo inteiro no render
         try
         {
@@ -280,6 +286,38 @@ public class PeakAutoTestPlugin : BaseUnityPlugin
         yield return new WaitForSeconds(2f);
         Log.LogInfo("[AutoTest] fim do teste (TestPassport), fechando o jogo");
         Application.Quit();
+    }
+
+    private static void DumpCharacterRenderers(string tag)
+    {
+        try
+        {
+            CustomizationRefs[] refsAll = UnityEngine.Object.FindObjectsOfType<CustomizationRefs>();
+            Log.LogInfo("[AutoTest] === renderers (" + tag + "): " + refsAll.Length + " CustomizationRefs ativos");
+            for (int i = 0; i < refsAll.Length; i++)
+            {
+                Transform root = refsAll[i].transform;
+                Log.LogInfo("[AutoTest] --- refs #" + i + " raiz=" + root.root.name + " no=" + root.name);
+                Renderer[] rr = root.GetComponentsInChildren<Renderer>(false);
+                for (int r = 0; r < rr.Length; r++)
+                {
+                    if (rr[r] == null || !rr[r].enabled) continue;
+                    Material[] mats = rr[r].sharedMaterials;
+                    StringBuilder line = new StringBuilder();
+                    line.Append("[AutoTest]     " + rr[r].name + " |");
+                    for (int mi = 0; mi < mats.Length; mi++)
+                    {
+                        Material m = mats[mi];
+                        string tex = "-";
+                        try { if (m != null && m.mainTexture != null) tex = m.mainTexture.name; }
+                        catch (Exception) { }
+                        line.Append(" [" + mi + "] " + (m != null ? m.name : "null") + " (" + tex + ")");
+                    }
+                    Log.LogInfo(line.ToString());
+                }
+            }
+        }
+        catch (Exception e) { Log.LogWarning("[AutoTest] dump renderers falhou: " + e.Message); }
     }
 
     private static void SaveRT(RenderTexture rt, string file)

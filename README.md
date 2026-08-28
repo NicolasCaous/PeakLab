@@ -50,8 +50,9 @@ desligado por padrão).
    e o tempo da run. **Clicar numa linha copia a seed de volta pro campo** — é assim
    que você "salva" e rejoga um mapa que gostou. Os dados ficam em
    `PEAK\BepInEx\PeakLabHistory.tsv` (abre direto no Excel).
-5. **Uniforme de soldado soviético** ☭ — abra o **passaporte** (item 1 na mão →
-   "open"), aba de **roupas** (camiseta): o uniforme é o último da grade. Gimnastyorka
+5. **Uniformes de soldado soviético** ☭ — abra o **passaporte** (item 1 na mão →
+   "open"), aba de **roupas** (camiseta): são os dois últimos da grade —
+   **campanha** (calção + meião cáqui) e **capote/shinel** (casacão cumprido). Gimnastyorka
    cáqui com estrela vermelha no peito, gravata vermelha, botas pretas — e o fit
    **equipa sozinho o capacete de aço com estrela** (como os casacos de inverno fazem
    com o capuz). Aviso: outros jogadores só veem o uniforme se também tiverem o mod;

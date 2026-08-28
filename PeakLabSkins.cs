@@ -20,6 +20,7 @@ public static class PeakLabSkins
     private static Texture2D _icon;
     private static Material _mat;
     private static CustomizationOption _fit;
+    private static CustomizationOption _shinel;
     private static bool _broken;
     private static Texture2D _helmTex;
     private static Material _helmMat;
@@ -36,6 +37,7 @@ public static class PeakLabSkins
             Customization cat = cats[ci] as Customization;
             if (cat == null || cat.fits == null || cat.fits.Length == 0) continue;
             bool has = false;
+            bool hasShinel = false;
             CustomizationOption baseFit = null;
             CustomizationOption sailor = null;
             for (int i = 0; i < cat.fits.Length; i++)
@@ -43,22 +45,27 @@ public static class PeakLabSkins
                 CustomizationOption o = cat.fits[i];
                 if (o == null) continue;
                 if (o.name == "Fit_Soviet") has = true;
+                else if (o.name == "Fit_Soviet_Shinel") hasShinel = true;
                 else if (o.name == "Fit_Scoutmaster_Shorts") baseFit = o;
                 else if (o.name == "Fit_Sailor_Shorts") sailor = o;
             }
-            if (has) continue;
+            if (has && hasShinel) continue;
             if (baseFit == null)
             {
                 log.LogWarning("[Skins] Fit_Scoutmaster_Shorts nao encontrado no catalogo");
                 continue;
             }
             if (_fit == null && !Build(baseFit, sailor, log)) { _broken = true; return; }
-            CustomizationOption[] plus = new CustomizationOption[cat.fits.Length + 1];
+            int extra = (has ? 0 : 1) + (!hasShinel && _shinel != null ? 1 : 0);
+            if (extra == 0) continue;
+            CustomizationOption[] plus = new CustomizationOption[cat.fits.Length + extra];
             Array.Copy(cat.fits, plus, cat.fits.Length);
-            plus[cat.fits.Length] = _fit;
+            int w = cat.fits.Length;
+            if (!has) plus[w++] = _fit;
+            if (!hasShinel && _shinel != null) plus[w++] = _shinel;
             cat.fits = plus;
-            log.LogInfo("[Skins] Fit_Soviet registrado no indice " + (plus.Length - 1) +
-                        " (catalogo " + cat.GetInstanceID() + ")");
+            log.LogInfo("[Skins] Fit_Soviet(+Shinel) registrados; catalogo " +
+                        cat.GetInstanceID() + " agora tem " + plus.Length + " fits");
         }
         // garante o capacete em todo CustomizationRefs ja carregado (instancias e prefabs)
         UnityEngine.Object[] refsAll = Resources.FindObjectsOfTypeAll(typeof(CustomizationRefs));
@@ -131,6 +138,8 @@ public static class PeakLabSkins
         o.fitMaterial = _mat;
         if (sailor != null && sailor.fitMaterialShoes != null)
             o.fitMaterialShoes = sailor.fitMaterialShoes; // botas pretas
+        // (sonda descartada: fitMaterialOverridePants so troca a ESTAMPA do calcao,
+        // nao existe mesh de calca comprida no rig - Scouts Tex TropicalPants provou)
         // capacete forcado pelo fit (mesmo mecanismo do capuz dos fits Bundled);
         // so liga o override se a textura do capacete realmente carregou
         if (_helmTex == null && !_helmBroken)
@@ -144,6 +153,14 @@ public static class PeakLabSkins
             o.overrideHatIndex = HelmetIndex;
         }
         _fit = o;
+        // variante capote (shinel): mesmo material, corte de saia = casacao que
+        // cobre as coxas ("calca longa" dentro do limite do rig, que nao tem
+        // mesh de calca - so calcao e saia)
+        CustomizationOption sh = UnityEngine.Object.Instantiate(o);
+        sh.name = "Fit_Soviet_Shinel";
+        sh.hideFlags = HideFlags.DontUnloadUnusedAsset;
+        sh.isSkirt = true;
+        _shinel = sh;
         return true;
     }
 
