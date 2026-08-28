@@ -19,7 +19,7 @@ using UnityEngine.Events;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
-[BepInPlugin("nicolas.peaklab", "PeakLab", "1.0.0")]
+[BepInPlugin("nicolas.peaklab", "PeakLab", "1.0.1")]
 public class PeakLabPlugin : BaseUnityPlugin
 {
     internal static ManualLogSource Log;
@@ -50,7 +50,9 @@ public class PeakLabPlugin : BaseUnityPlugin
         CfgFullRegen = Config.Bind("Geracao", "FullRegenerate", false,
             "NAO USAR: Clear() remove conteudo (ex: paredes) que Generate() nao reconstroi - " +
             "a ilha pode nascer vazia no oceano. Mantido so para pesquisa.");
-        CfgMountain = Config.Bind("Avancado", "Montanha", "Auto", "Auto, Alpine ou Mesa");
+        CfgMountain = Config.Bind("Avancado", "Montanha", "Auto",
+            "Auto, Alpine ou Mesa. BETA: a troca manual esta em investigacao - " +
+            "se o jogador nascer na agua, volte para Auto");
         CfgBeach = Config.Bind("Avancado", "Praia", "Auto", "Auto ou variante fixa da praia");
         CfgJungle = Config.Bind("Avancado", "Selva", "Auto", "Auto ou variante fixa da selva");
         CfgSnow = Config.Bind("Avancado", "Neve", "Auto", "Auto ou variante fixa da neve (so vale com Alpine)");
@@ -70,7 +72,7 @@ public class PeakLabPlugin : BaseUnityPlugin
                 new HarmonyMethod(typeof(PeakLabPlugin).GetMethod("StartGamePrefix",
                     BindingFlags.Static | BindingFlags.NonPublic)), null);
             SceneManager.sceneLoaded += OnSceneLoaded;
-            Log.LogInfo("PeakLab 1.0.0 pronto");
+            Log.LogInfo("PeakLab 1.0.1 pronto");
         }
         catch (Exception e)
         {
@@ -314,13 +316,14 @@ public class PeakLabPlugin : BaseUnityPlugin
             return;
         }
 
-        // 1) montanha: pin explicito, ou decidida pela seed quando Auto
-        if (mountain == "Auto" && hasSeed)
+        // 1) montanha: SOMENTE pin explicito (BETA). A troca automatica pela seed
+        // foi removida na 1.0.1: o swap quebrava a intro e o jogador nascia no
+        // oceano (NRE engolido pelo DOTween durante a cutscene).
+        if (mountain != "Auto")
         {
-            mountain = (new System.Random(PendingSeed.Value).Next(2) == 0) ? "Alpine" : "Mesa";
-            Log.LogInfo("[PeakLab] seed decidiu montanha: " + mountain);
+            Log.LogWarning("[PeakLab] MONTANHA=" + mountain + " e BETA - se nascer na agua, volte para Auto");
+            EnsureMountain(mountain);
         }
-        if (mountain != "Auto") EnsureMountain(mountain);
 
         // 2) seed nas variantes
         if (hasSeed)
@@ -399,7 +402,24 @@ public class PeakLabPlugin : BaseUnityPlugin
             GameObject curParent = ReadField(cur, "_segmentParent") as GameObject;
             GameObject altParent = ReadField(alt, "_segmentParent") as GameObject;
             if (curParent != null) curParent.SetActive(false);
-            if (altParent != null) altParent.SetActive(true);
+            if (altParent != null)
+            {
+                altParent.SetActive(true);
+                // os segmentos variantes vem com um ancestral desligado
+                // (ex: Map/Biome_3/Desert) - sem ligar a cadeia toda o
+                // segmento nunca aparece de verdade
+                Transform anc = altParent.transform.parent;
+                int guard = 0;
+                while (anc != null && guard++ < 10)
+                {
+                    if (!anc.gameObject.activeSelf)
+                    {
+                        Log.LogInfo("[PeakLab] ativando ancestral: " + anc.name);
+                        anc.gameObject.SetActive(true);
+                    }
+                    anc = anc.parent;
+                }
+            }
             Log.LogInfo("[PeakLab] montanha trocada: " + curBiome + " -> " + target +
                         " (slot " + slot + ", " +
                         (altParent != null ? altParent.name : "?") + " ativo)");

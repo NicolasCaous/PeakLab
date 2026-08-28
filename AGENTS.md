@@ -107,8 +107,14 @@ O daily do vanilla nunca re-sorteia nada disso.
 - Troca de montanha Alpine↔Mesa: **não existe caminho vivo no vanilla**
   (`GetVariantSegmentFromBiome` nunca é chamado). Fazemos na mão: trocar as entradas
   `segments[slot] ↔ variantSegments[0]`, ajustar `isVariant/hasVariant`, `SetActive`
-  nos `_segmentParent` (desliga o antigo, liga o novo). Walls/campfire/dayNight vêm
-  juntos porque pertencem ao `MapSegment`. Validado em jogo.
+  nos `_segmentParent`. **STATUS: BETA/BUGADO** — na 1.0.0 o swap fazia o jogador
+  nascer no oceano sem ilha (bug real visto pelo Nicolas em 28/08). Causas conhecidas:
+  (1) o segmento variante tem ANCESTRAL desligado (`Map/Biome_3/Desert` off nas cenas
+  Alpine) — corrigido na 1.0.1 ativando a cadeia de ancestrais; (2) um NRE engolido
+  pelo DOTween aparece no Player.log durante a intro com o swap ativo — suspeita de
+  tween da cutscene apontando para objeto do segmento desativado; AINDA NÃO RESOLVIDO.
+  Na 1.0.1 o swap só roda com pin explícito (a decisão automática por seed foi
+  removida) e está marcado beta na UI/config.
 - **`Clear()`+`Generate()` NÃO é seguro**: `Clear()` remove conteúdo (paredes de
   escalada) que `Generate()` não reconstrói (`WallPieceSpawner.Go` nunca é chamado
   pelo `Generate()` — 0 hits no espião). Resultado: ilha vazia/oceano. A opção
@@ -235,6 +241,13 @@ não aparecem inteiras num grep simples — usar `grep -A8`. Linhas-chave do Pea
 
 ## 8. Roadmap com dicas de implementação
 
+0. **Consertar o swap de montanha (prioridade)**: reproduzir com autopilot + log da
+   POSIÇÃO do personagem (t+15s: se y ~nível do mar e longe do Beach spawn → nasceu
+   na água). Comparar Alpine-baked sem swap vs com swap 1.0.1 (ancestrais corrigidos).
+   Investigar o NRE do DOTween na intro (procurar "DOTWEEN" no Player.log); candidatos:
+   tween da cutscene do avião referenciando objeto do Snow_Segment desativado, ou
+   `CampfireSectionGroundStealer`/`Campfire_Set_Segment` do segmento trocado. Validar
+   VISUALMENTE (pedir print ao Nicolas) antes de tirar o selo beta.
 1. **Sync multiplayer** (o mais pedido a seguir): no `StartGamePrefix` do host, gravar
    seed+pins em `PhotonNetwork.CurrentRoom.SetCustomProperties`; nos clientes, ler em
    `OnSceneLoaded` antes de aplicar (prioridade sobre config local). Todos precisam do

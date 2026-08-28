@@ -7,7 +7,7 @@ combo de variantes. O PeakLab reativa o sistema de variantes que veio dormente n
 
 - **Seed de mapa** na boarding pass do aeroporto — digite um número ou aperte `?` para
   sortear. Mesma seed = mesmo mapa (bom para jogar "o mesmo diário" com amigos na mesma versão).
-- **Modo avançado** — escolha a montanha (**Alpine ou Mesa/deserto**) e as variantes de
+- **Modo avançado** — escolha a montanha (**Alpine ou Mesa/deserto** — beta) e as variantes de
   **praia** (SnakeBeach, BlackSand, BlueBeach, RedBeach, JellyHell...), **selva**
   (SkyJungle, Pillars, Ivy, Thorny, Lava, Bombs...) e **neve** (Lava, Spiky, GeyserHell...).
 - Campo vazio + tudo em `Auto` = jogo original intocado.
@@ -64,6 +64,9 @@ Arquivo: `PEAK\BepInEx\config\nicolas.peaklab.cfg`
   por `[UI]`; abra uma issue com o log.
 - **Escolhi uma variante e não mudou nada** → variantes de `NEVE` só valem com montanha
   Alpine; e a mudança vale para a **próxima** ilha carregada, não a atual.
+- **Nasci na água, sem ilha** → você usou `MONTANHA` diferente de `Auto` (recurso beta).
+  Volte para `Auto`, feche e reabra o jogo, e reporte numa issue com o
+  `BepInEx\LogOutput.log`.
 
 ## Build a partir do código
 
