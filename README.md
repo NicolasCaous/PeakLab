@@ -52,9 +52,15 @@ Arquivo: `PEAK\BepInEx\config\nicolas.peaklab.cfg`
 
 | Seção/Chave | Padrão | Efeito |
 |---|---|---|
-| `[Geracao] RandomizeBiomeVariants` | `true` | Com seed, re-sorteia as variantes da ilha |
+| `[Geracao] RandomizeBiomeVariants` | `true` | Com seed, sorteia as variantes da ilha |
+| `[Geracao] PoolDeVariantes` | `Padrao` | `Padrao` = só variantes que os devs usaram nos 6 mapas oficiais; `Todas` = catálogo completo (JellyHell, SkyJungle, BlueBeach...) |
 | `[Geracao] FullRegenerate` | `false` | **NÃO USAR** — apaga paredes que não voltam (ilha vazia no oceano) |
 | `[Avancado] Montanha/Praia/Selva/Neve` | `Auto` | Espelham os seletores da UI |
+
+Como funciona por baixo: os contêineres de variante vêm vazios de fábrica (o conteúdo
+só foi assado na variante ativa de cada cena). O PeakLab ativa a variante sorteada e
+**roda os geradores dela** — e só dela: o que já vinha ativo de fábrica mantém o bake
+original dos devs, sem duplicação.
 
 ## Solução de problemas
 

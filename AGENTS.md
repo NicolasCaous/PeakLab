@@ -99,9 +99,23 @@ O daily do vanilla nunca re-sorteia nada disso.
 ### 3.4 As alavancas que funcionam (e as que não)
 
 - `LevelGeneration` (1 por cena): campo `seed`, métodos `Generate()`, `Clear()`,
-  `RandomizeBiomeVariants()`. **`RandomizeBiomeVariants()` funciona em runtime e é
-  determinístico** dado `UnityEngine.Random.InitState(seed)` antes. Liga UMA variante
-  por área e desliga as irmãs.
+  `RandomizeBiomeVariants()`. `RandomizeBiomeVariants()` funciona em runtime e é
+  determinístico — MAS liga **cascas ocas**: os contêineres de variante vêm VAZIOS de
+  fábrica (o conteúdo só foi baked na variante ativa de cada cena). Ligar variante sem
+  rodar os geradores dela = ilha pelada (bug real visto pelo Nicolas em 28/08, seed
+  454034). **Receita correta (v1.1.0)**: snapshot dos marcadores ativos → escolher/ativar
+  a variante (ApplyPin) → `RunGeneratorsUnder()` SOMENTE nos contêineres que mudaram
+  OFF→ON (LevelGenStep.Go, WallPieceSpawner.Go, RockSpawner.Go, RockSpawnerGD.spawnObjects,
+  BeachSpawner.Spawn, BasicGrassSpawner.Generate). Quem já vinha ativo mantém o bake
+  original (zero duplicação). Validado: ~105 geradores por ilha, zero erros, e print
+  do Nicolas mostrando a JellyHell populada (via receita B1 global, equivalente).
+  A v1.1.0 não usa mais `RandomizeBiomeVariants` no caminho principal (sorteio próprio
+  com `System.Random(seed)` sobre pools controlados; ignora os pesos do `BiomeSelector`).
+- **Pools de sorteio (decisão de produto do Nicolas)**: default `Padrao` = só variantes
+  presentes nos combos baked oficiais da v1.35.a (praia: Default/SnakeBeach/BlackSand/
+  RedBeach; selva: Default/Bombs; neve: Default/Lava/Spiky). Opt-in `Todas` (cycler
+  `VARIANTES` na UI) libera o catálogo inteiro + re-sorteio das micro-variantes do
+  deserto. Racional: manter a experiência canônica da versão como padrão.
 - `VariantObjectSelector.SelectVariations()` — mesmo esquema para as micro-variantes
   do deserto. Chamar por instância (4 na cena típica).
 - Troca de montanha Alpine↔Mesa: **não existe caminho vivo no vanilla**
@@ -220,6 +234,14 @@ direto nessa cena), `JumpToSegment` (ex.: `Alpine` — teleporta aos 15s, ativa 
 
 **SEMPRE deixar `Enabled = false` ao terminar** (senão o jogo do Nicolas decola sozinho —
 ele já viu "o jogo nascer num oceano infinito" durante uma bateria de testes).
+
+Armadilhas do harness aprendidas na prática:
+- **Truncar `LogOutput.log` antes de cada launch** (`: > LogOutput.log`): o BepInEx só
+  sobrescreve depois do boot; um poll de grep no arquivo velho "acha" linhas da rodada
+  anterior e dispara cedo demais (foi o que estragou screenshots da bateria valid2).
+- Screenshot via `tools/screenshot.ps1` captura A TELA: se o Nicolas estiver usando o
+  PC (janela na frente), a foto sai do desktop, não do jogo. Combinar com ele antes,
+  ou validar por log (posição dos personagens: praia ~y=2; água/void: y<=0 ou queda).
 
 Interpretação de log: entradas multi-linha do BepInEx (tabelas de segmentos, stacks)
 não aparecem inteiras num grep simples — usar `grep -A8`. Linhas-chave do PeakLab:

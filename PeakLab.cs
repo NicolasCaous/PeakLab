@@ -19,12 +19,15 @@ using UnityEngine.Events;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
-[BepInPlugin("nicolas.peaklab", "PeakLab", "1.0.1")]
+[BepInPlugin("nicolas.peaklab", "PeakLab", "1.1.0")]
 public class PeakLabPlugin : BaseUnityPlugin
 {
     internal static ManualLogSource Log;
     internal static ConfigEntry<bool> CfgVariants;
     internal static ConfigEntry<bool> CfgFullRegen;
+    internal static ConfigEntry<bool> CfgGenAfter;
+    internal static ConfigEntry<bool> CfgPopulate;
+    internal static ConfigEntry<string> CfgPool;
     internal static int? PendingSeed;
 
     // catalogo colhido das 6 cenas (identico em todas)
@@ -32,6 +35,15 @@ public class PeakLabPlugin : BaseUnityPlugin
     private static readonly string[] BeachOpts = { "Auto", "Default", "SnakeBeach", "BlackSand", "BlueBeach", "RedBeach", "JellyHell" };
     private static readonly string[] JungleOpts = { "Auto", "Default", "Thorny", "SkyJungle", "Pillars", "Ivy", "Lava", "Bombs" };
     private static readonly string[] SnowOpts = { "Auto", "Default", "Lava", "Spiky", "GeyserHell" };
+
+    // pools de sorteio: "Padrao" = so o que os devs usaram nos combos baked da v1.35.a
+    private static readonly string[] PoolOpts = { "Padrao", "Todas" };
+    private static readonly string[] PadraoBeach = { "Default", "SnakeBeach", "BlackSand", "RedBeach" };
+    private static readonly string[] PadraoJungle = { "Default", "Bombs" };
+    private static readonly string[] PadraoSnow = { "Default", "Lava", "Spiky" };
+    private static readonly string[] TodasBeach = { "Default", "SnakeBeach", "BlackSand", "BlueBeach", "RedBeach", "JellyHell" };
+    private static readonly string[] TodasJungle = { "Default", "Thorny", "SkyJungle", "Pillars", "Ivy", "Lava", "Bombs" };
+    private static readonly string[] TodasSnow = { "Default", "Lava", "Spiky", "GeyserHell" };
 
     private static ConfigEntry<string> CfgMountain;
     private static ConfigEntry<string> CfgBeach;
@@ -50,6 +62,15 @@ public class PeakLabPlugin : BaseUnityPlugin
         CfgFullRegen = Config.Bind("Geracao", "FullRegenerate", false,
             "NAO USAR: Clear() remove conteudo (ex: paredes) que Generate() nao reconstroi - " +
             "a ilha pode nascer vazia no oceano. Mantido so para pesquisa.");
+        CfgGenAfter = Config.Bind("Geracao", "GenerateAposVariantes", false,
+            "Experimento B1: apos re-sortear variantes, chama LevelGeneration.Generate() " +
+            "(sem Clear) para popular os conteineres recem-ativados");
+        CfgPopulate = Config.Bind("Geracao", "PopularVariantesAtivas", false,
+            "Experimento B2: apos re-sortear, roda os geradores (Go/Spawn/Generate) apenas " +
+            "DENTRO dos conteineres de variante ativos");
+        CfgPool = Config.Bind("Geracao", "PoolDeVariantes", "Padrao",
+            "Padrao = a seed sorteia so variantes que os devs usaram nos 6 mapas da " +
+            "v1.35.a; Todas = libera o catalogo inteiro (JellyHell, SkyJungle etc.)");
         CfgMountain = Config.Bind("Avancado", "Montanha", "Auto",
             "Auto, Alpine ou Mesa. BETA: a troca manual esta em investigacao - " +
             "se o jogador nascer na agua, volte para Auto");
@@ -72,7 +93,7 @@ public class PeakLabPlugin : BaseUnityPlugin
                 new HarmonyMethod(typeof(PeakLabPlugin).GetMethod("StartGamePrefix",
                     BindingFlags.Static | BindingFlags.NonPublic)), null);
             SceneManager.sceneLoaded += OnSceneLoaded;
-            Log.LogInfo("PeakLab 1.0.1 pronto");
+            Log.LogInfo("PeakLab 1.1.0 pronto");
         }
         catch (Exception e)
         {
@@ -157,6 +178,8 @@ public class PeakLabPlugin : BaseUnityPlugin
             W * 0.03f, H * 0.44f, W * 0.46f, H * 0.17f, fs);
         MakeCycler(bp, box, "NEVE", SnowOpts, CfgSnow,
             W * 0.51f, H * 0.44f, W * 0.46f, H * 0.17f, fs);
+        MakeCycler(bp, box, "VARIANTES", PoolOpts, CfgPool,
+            W * 0.03f, H * 0.63f, W * 0.46f, H * 0.17f, fs);
         SetAdvancedVisible(false);
         Log.LogInfo("[UI] boarding pass pronta (simples + avancado)");
     }
@@ -325,36 +348,109 @@ public class PeakLabPlugin : BaseUnityPlugin
             EnsureMountain(mountain);
         }
 
-        // 2) seed nas variantes
+        // snapshot dos conteineres de variante ANTES de qualquer mexida
+        Dictionary<int, bool> before = SnapshotVariantStates(scene);
+        bool todas = CfgPool.Value == "Todas";
+        System.Random rng = hasSeed ? new System.Random(PendingSeed.Value) : new System.Random();
+
         if (hasSeed)
         {
-            int seed = PendingSeed.Value;
-            UnityEngine.Random.InitState(seed);
+            UnityEngine.Random.InitState(PendingSeed.Value);
             Component gen = FindInScene(scene, "LevelGeneration");
             if (gen != null)
             {
                 FieldInfo sf = AccessTools.Field(gen.GetType(), "seed");
-                if (sf != null) sf.SetValue(gen, seed);
-                if (CfgVariants.Value)
-                {
-                    InvokeOn(gen, "RandomizeBiomeVariants");
-                    RunVariantSelectors(scene);
-                }
-                if (CfgFullRegen.Value)
-                {
-                    InvokeOn(gen, "Clear");
-                    InvokeOn(gen, "Generate");
-                }
+                if (sf != null) sf.SetValue(gen, PendingSeed.Value);
             }
-            else Log.LogWarning("[PeakLab] LevelGeneration ausente em " + scene.name);
         }
 
-        // 3) pins de area (por cima do sorteio)
-        ApplyPin("Beach_Segment", CfgBeach.Value);
-        ApplyPin("Jungle_Segment", CfgJungle.Value);
-        ApplyPin("Snow_Segment", CfgSnow.Value);
+        // 2) escolha por area: pin explicito > sorteio da seed (dentro do pool) > baked
+        bool rollBySeed = hasSeed && CfgVariants.Value;
+        Log.LogInfo("[PeakLab] pool de variantes: " + (todas ? "TODAS" : "PADRAO (so combos oficiais da v1.35.a)"));
+        ChooseVariant("Beach_Segment", CfgBeach.Value, todas ? TodasBeach : PadraoBeach, rollBySeed, rng);
+        ChooseVariant("Jungle_Segment", CfgJungle.Value, todas ? TodasJungle : PadraoJungle, rollBySeed, rng);
+        ChooseVariant("Snow_Segment", CfgSnow.Value, todas ? TodasSnow : PadraoSnow, rollBySeed, rng);
+
+        // micro-variantes do deserto: so no pool TODAS (no Padrao fica o bake)
+        if (rollBySeed && todas) RunVariantSelectors(scene);
+
+        // 3) povoa SOMENTE os conteineres que mudaram de OFF->ON (cascas ocas);
+        // quem ja vinha ativo de fabrica mantem o bake original dos devs
+        PopulateNewlyActivated(scene, before);
+
+        // flags de pesquisa (desligadas por padrao)
+        if (hasSeed)
+        {
+            Component gen2 = FindInScene(scene, "LevelGeneration");
+            if (gen2 != null)
+            {
+                if (CfgGenAfter.Value) InvokeOn(gen2, "Generate");
+                if (CfgPopulate.Value) PopulateActiveVariants(scene);
+                if (CfgFullRegen.Value)
+                {
+                    InvokeOn(gen2, "Clear");
+                    InvokeOn(gen2, "Generate");
+                }
+            }
+        }
 
         LogIslandState();
+    }
+
+    // decide e aplica a variante de uma area
+    private static void ChooseVariant(string segmentRoot, string pin, string[] pool,
+        bool rollBySeed, System.Random rng)
+    {
+        string choice = null;
+        if (pin != "Auto") choice = pin;
+        else if (rollBySeed) choice = pool[rng.Next(pool.Length)];
+        if (choice == null) return;
+        ApplyPin(segmentRoot, choice);
+    }
+
+    private static Dictionary<int, bool> SnapshotVariantStates(Scene scene)
+    {
+        Dictionary<int, bool> map = new Dictionary<int, bool>();
+        string[] markerTypes = new string[] { "BiomeVariant", "VariantObject" };
+        for (int i = 0; i < markerTypes.Length; i++)
+        {
+            Type t = AccessTools.TypeByName(markerTypes[i]);
+            if (t == null) continue;
+            UnityEngine.Object[] all = Resources.FindObjectsOfTypeAll(t);
+            foreach (UnityEngine.Object o in all)
+            {
+                Component c = o as Component;
+                if (c == null || c.gameObject.scene != scene) continue;
+                map[c.gameObject.GetInstanceID()] = c.gameObject.activeInHierarchy;
+            }
+        }
+        return map;
+    }
+
+    private static void PopulateNewlyActivated(Scene scene, Dictionary<int, bool> before)
+    {
+        string[] markerTypes = new string[] { "BiomeVariant", "VariantObject" };
+        int populated = 0;
+        int ran = 0;
+        for (int i = 0; i < markerTypes.Length; i++)
+        {
+            Type t = AccessTools.TypeByName(markerTypes[i]);
+            if (t == null) continue;
+            UnityEngine.Object[] all = Resources.FindObjectsOfTypeAll(t);
+            foreach (UnityEngine.Object o in all)
+            {
+                Component c = o as Component;
+                if (c == null || c.gameObject.scene != scene) continue;
+                if (!c.gameObject.activeInHierarchy) continue;
+                bool wasActive;
+                if (before.TryGetValue(c.gameObject.GetInstanceID(), out wasActive) && wasActive) continue;
+                populated++;
+                ran += RunGeneratorsUnder(c);
+            }
+        }
+        if (populated > 0)
+            Log.LogInfo("[PeakLab] " + populated + " conteinere(s) recem-ativado(s) povoado(s) (" +
+                        ran + " geradores)");
     }
 
     // troca segments[slotVariante] <-> variantSegments[0] quando o alvo difere do baked
@@ -459,6 +555,63 @@ public class PeakLabPlugin : BaseUnityPlugin
         {
             Log.LogError("[PeakLab] ApplyPin " + segmentRoot + ": " + e);
         }
+    }
+
+    // os conteineres de variante vem VAZIOS de fabrica (o conteudo foi baked so na
+    // variante ativa da cena); depois de ativar um novo, e preciso rodar os geradores
+    // que moram dentro dele
+    private static readonly string[][] GeneratorMethods = new string[][]
+    {
+        new string[] { "LevelGenStep", "Go" },
+        new string[] { "WallPieceSpawner", "Go" },
+        new string[] { "RockSpawner", "Go" },
+        new string[] { "RockSpawnerGD", "spawnObjects" },
+        new string[] { "BeachSpawner", "Spawn" },
+        new string[] { "BasicGrassSpawner", "Generate" }
+    };
+
+    private static int RunGeneratorsUnder(Component container)
+    {
+        int ran = 0;
+        for (int g = 0; g < GeneratorMethods.Length; g++)
+        {
+            Type t = AccessTools.TypeByName(GeneratorMethods[g][0]);
+            if (t == null) continue;
+            Component[] comps = container.GetComponentsInChildren(t, false);
+            foreach (Component c in comps)
+            {
+                MethodInfo mi = AccessTools.Method(c.GetType(), GeneratorMethods[g][1]);
+                if (mi == null || mi.GetParameters().Length != 0) continue;
+                try
+                {
+                    mi.Invoke(c, null);
+                    ran++;
+                }
+                catch (Exception e)
+                {
+                    Log.LogWarning("[PeakLab] " + c.GetType().Name + "." + GeneratorMethods[g][1] +
+                                   " em " + container.gameObject.name + ": " + e.Message);
+                }
+            }
+        }
+        return ran;
+    }
+
+    // versao de pesquisa (flag B2): roda geradores em TODOS os conteineres ativos
+    private static void PopulateActiveVariants(Scene scene)
+    {
+        Type bv = AccessTools.TypeByName("BiomeVariant");
+        if (bv == null) return;
+        UnityEngine.Object[] markers = Resources.FindObjectsOfTypeAll(bv);
+        int ran = 0;
+        foreach (UnityEngine.Object o in markers)
+        {
+            Component m = o as Component;
+            if (m == null || m.gameObject.scene != scene) continue;
+            if (!m.gameObject.activeInHierarchy) continue;
+            ran += RunGeneratorsUnder(m);
+        }
+        Log.LogInfo("[PeakLab] geradores de variante executados: " + ran);
     }
 
     // roda os seletores de micro-variantes (ex.: deserto) com o Random ja semeado
@@ -578,10 +731,34 @@ public class PeakLabPlugin : BaseUnityPlugin
                 n++;
             }
             Log.LogInfo("[PeakLab] variantes ativas: " + vb);
+            LogCharacterPositions();
         }
         catch (Exception e)
         {
             Log.LogWarning("[PeakLab] LogIslandState: " + e.Message);
+        }
+    }
+
+    // posicao dos personagens (na agua: y ~0 e longe do spawn da praia)
+    private static void LogCharacterPositions()
+    {
+        try
+        {
+            Type ch = AccessTools.TypeByName("Character");
+            if (ch == null) return;
+            UnityEngine.Object[] cs = Resources.FindObjectsOfTypeAll(ch);
+            foreach (UnityEngine.Object o in cs)
+            {
+                Component c = o as Component;
+                if (c == null || !c.gameObject.scene.IsValid()) continue;
+                if (!c.gameObject.activeInHierarchy) continue;
+                Log.LogInfo("[PeakLab] personagem '" + c.gameObject.name + "' pos=" +
+                            c.transform.position.ToString("F1"));
+            }
+        }
+        catch (Exception e)
+        {
+            Log.LogWarning("[PeakLab] LogCharacterPositions: " + e.Message);
         }
     }
 }
