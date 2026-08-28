@@ -29,6 +29,7 @@ public class PeakAutoTestPlugin : BaseUnityPlugin
     private ConfigEntry<bool> _testPassport;
     private ConfigEntry<string> _testFitName;
     private ConfigEntry<bool> _unlitDummy;
+    private ConfigEntry<bool> _unlitChar;
     private bool _soloClicked;
     private bool _boarded;
 
@@ -46,6 +47,7 @@ public class PeakAutoTestPlugin : BaseUnityPlugin
         _testPassport = Config.Bind("AutoTest", "TestPassport", false, "No Airport: veste o Fit_Soviet + bone, abre o passaporte, tira screenshot e fecha");
         _testFitName = Config.Bind("AutoTest", "TestFitName", "Fit_Soviet", "Nome do fit a vestir no TestPassport");
         _unlitDummy = Config.Bind("AutoTest", "UnlitDummy", false, "No TestPassport: boneco em shader unlit (leitura de UV, cores puras da textura)");
+        _unlitChar = Config.Bind("AutoTest", "UnlitCharacter", false, "No TestPassport: personagem REAL em shader unlit antes das selfies (leitura de UV)");
         if (!_enabled.Value)
         {
             Log.LogInfo("[AutoTest] desligado");
@@ -197,6 +199,10 @@ public class PeakAutoTestPlugin : BaseUnityPlugin
         else Log.LogError("[AutoTest] " + _testFitName.Value + " NAO esta no catalogo!");
         yield return new WaitForSeconds(1f);
         DumpCharacterRenderers("apos vestir");
+        DumpMeshUvMasks();
+        if (_unlitChar.Value) UnlitAllUnder(FindCharacterRoot(), "personagem");
+        yield return StartCoroutine(CharacterSelfie("char_selfie_frente.png", false));
+        yield return StartCoroutine(CharacterSelfie("char_selfie_costas.png", true));
         PassportManager pm = PassportManager.instance;
         if (pm != null)
         {
@@ -318,6 +324,154 @@ public class PeakAutoTestPlugin : BaseUnityPlugin
             }
         }
         catch (Exception e) { Log.LogWarning("[AutoTest] dump renderers falhou: " + e.Message); }
+    }
+
+    // fotografa o personagem REAL com uma camera propria (o que o jogador ve)
+    private static Transform FindCharacterRoot()
+    {
+        CustomizationRefs[] all = UnityEngine.Object.FindObjectsOfType<CustomizationRefs>();
+        for (int i = 0; i < all.Length; i++)
+        {
+            if (all[i] != null && all[i].transform.root.name.StartsWith("Character"))
+                return all[i].transform.root;
+        }
+        return null;
+    }
+
+    private static void UnlitAllUnder(Transform root, string tag)
+    {
+        try
+        {
+            if (root == null) return;
+            Shader unlit = Shader.Find("UI/Default");
+            if (unlit == null) unlit = Shader.Find("Unlit/Texture");
+            if (unlit == null) { Log.LogWarning("[AutoTest] sem shader unlit"); return; }
+            Renderer[] rr = root.GetComponentsInChildren<Renderer>(true);
+            for (int i = 0; i < rr.Length; i++)
+            {
+                Material[] ms = rr[i].materials;
+                for (int mi = 0; mi < ms.Length; mi++)
+                {
+                    if (ms[mi] == null) continue;
+                    Texture keep = ms[mi].mainTexture;
+                    ms[mi].shader = unlit;
+                    ms[mi].mainTexture = keep;
+                }
+            }
+            Log.LogInfo("[AutoTest] " + tag + " em modo unlit (" + rr.Length + " renderers)");
+        }
+        catch (Exception e) { Log.LogWarning("[AutoTest] unlit falhou: " + e.Message); }
+    }
+
+    private IEnumerator CharacterSelfie(string fileName, bool costas)
+    {
+        GameObject camGo = null;
+        CustomizationRefs target = null;
+        CustomizationRefs[] all = UnityEngine.Object.FindObjectsOfType<CustomizationRefs>();
+        for (int i = 0; i < all.Length; i++)
+        {
+            if (all[i] != null && all[i].transform.root.name.StartsWith("Character"))
+            { target = all[i]; break; }
+        }
+        if (target == null)
+        {
+            Log.LogWarning("[AutoTest] selfie: personagem nao encontrado");
+            yield break;
+        }
+        try
+        {
+            Transform root = target.transform.root;
+            camGo = new GameObject("PeakAutoTest_SelfieCam");
+            Camera cam = camGo.AddComponent<Camera>();
+            cam.depth = 99f;
+            cam.fieldOfView = 45f;
+            Vector3 center = root.position + Vector3.up * 0.62f;
+            Vector3 dir = costas ? -root.forward : root.forward;
+            camGo.transform.position = center + dir * 3.4f + Vector3.up * 0.1f;
+            camGo.transform.LookAt(center);
+        }
+        catch (Exception e)
+        {
+            Log.LogWarning("[AutoTest] selfie falhou: " + e.Message);
+            if (camGo != null) UnityEngine.Object.Destroy(camGo);
+            yield break;
+        }
+        yield return new WaitForSeconds(0.5f);
+        string shot = System.IO.Path.Combine(BepInEx.Paths.GameRootPath,
+            System.IO.Path.Combine("BepInEx", System.IO.Path.Combine("recon", fileName)));
+        ScreenCapture.CaptureScreenshot(shot);
+        Log.LogInfo("[AutoTest] selfie do personagem -> " + shot);
+        yield return new WaitForSeconds(1f);
+        UnityEngine.Object.Destroy(camGo);
+    }
+
+    // le direto do mesh: que regiao do atlas cada faixa de altura do corpo usa.
+    // Gera recon\uvmask_<quem>_sm<slot>.png (1024, fundo preto):
+    //   azul=pes, magenta=canela/meiao, amarelo=quadril, verde=torso, vermelho=gola/ombro
+    private static void DumpMeshUvMasks()
+    {
+        try
+        {
+            CustomizationRefs[] all = Resources.FindObjectsOfTypeAll<CustomizationRefs>();
+            for (int i = 0; i < all.Length; i++)
+            {
+                CustomizationRefs r = all[i];
+                if (r == null || r.mainRenderer == null || r.mainRenderer.sharedMesh == null) continue;
+                string who = r.transform.root.name.StartsWith("Character") ? "character"
+                           : (r.gameObject.scene.IsValid() ? "cena_" + r.transform.root.name : "prefab");
+                Mesh mesh = r.mainRenderer.sharedMesh;
+                Log.LogInfo("[AutoTest] uvmask " + who + ": mesh=" + mesh.name +
+                            " id=" + mesh.GetInstanceID() + " verts=" + mesh.vertexCount +
+                            " submeshes=" + mesh.subMeshCount);
+                Vector3[] verts = mesh.vertices;
+                Vector2[] uv = mesh.uv;
+                float ymin = float.MaxValue, ymax = float.MinValue;
+                for (int v = 0; v < verts.Length; v++)
+                {
+                    if (verts[v].y < ymin) ymin = verts[v].y;
+                    if (verts[v].y > ymax) ymax = verts[v].y;
+                }
+                float span = Mathf.Max(0.0001f, ymax - ymin);
+                for (int sm = 0; sm < mesh.subMeshCount; sm++)
+                {
+                    int[] tris = mesh.GetTriangles(sm);
+                    Texture2D mask = new Texture2D(1024, 1024, TextureFormat.RGB24, false);
+                    Color32[] px = new Color32[1024 * 1024];
+                    for (int p = 0; p < px.Length; p++) px[p] = new Color32(0, 0, 0, 255);
+                    for (int t = 0; t < tris.Length; t++)
+                    {
+                        int vi = tris[t];
+                        if (vi >= verts.Length || vi >= uv.Length) continue;
+                        float ny = (verts[vi].y - ymin) / span;
+                        Color32 c;
+                        if (ny < 0.08f) c = new Color32(60, 120, 255, 255);       // pes
+                        else if (ny < 0.30f) c = new Color32(255, 0, 255, 255);   // canela/meiao
+                        else if (ny < 0.52f) c = new Color32(255, 230, 40, 255);  // quadril
+                        else if (ny < 0.80f) c = new Color32(40, 220, 60, 255);   // torso
+                        else c = new Color32(255, 40, 40, 255);                   // gola/ombro
+                        int ux = Mathf.Clamp((int)(uv[vi].x * 1023f), 0, 1023);
+                        int uy = Mathf.Clamp((int)((1f - uv[vi].y) * 1023f), 0, 1023);
+                        for (int dy = -2; dy <= 2; dy++)
+                        {
+                            for (int dx = -2; dx <= 2; dx++)
+                            {
+                                int qx = ux + dx, qy = uy + dy;
+                                if (qx < 0 || qy < 0 || qx > 1023 || qy > 1023) continue;
+                                px[(1023 - qy) * 1024 + qx] = c;
+                            }
+                        }
+                    }
+                    mask.SetPixels32(px);
+                    mask.Apply();
+                    string f = System.IO.Path.Combine(BepInEx.Paths.GameRootPath,
+                        System.IO.Path.Combine("BepInEx", System.IO.Path.Combine("recon",
+                        "uvmask_" + who + "_m" + mesh.GetInstanceID() + "_sm" + sm + ".png")));
+                    System.IO.File.WriteAllBytes(f, ImageConversion.EncodeToPNG(mask));
+                    UnityEngine.Object.Destroy(mask);
+                }
+            }
+        }
+        catch (Exception e) { Log.LogWarning("[AutoTest] uvmask falhou: " + e); }
     }
 
     private static void SaveRT(RenderTexture rt, string file)

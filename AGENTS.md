@@ -215,6 +215,14 @@ O daily do vanilla nunca re-sorteia nada disso.
   remap por família de cor em HSV (preserva sombreado pintado), clone-stamp para
   apagar emblemas, estrela desenhada por polígono. Iterar: gerar → build → autopilot
   `TestPassport=true` → ver `recon\passport_test.png` e `recon\dummy_rt.png`.
+- **ARMADILHA MORTAL: o boneco do passaporte usa OUTRO MESH.** O personagem real
+  veste o `fitMesh` da option (MainMesh 4240 verts, id 438378, NAO legivel por CPU)
+  e o `PlayerCustomizationDummy` continua com o MainMesh base (3862 verts, id 43392)
+  so trocando materiais. Mesmos nomes, UVs DIFERENTES (ex.: o meiao do personagem
+  sampleia a faixa diagonal ate o canto (1023,1023); o do boneco, y598-800).
+  Validar textura NO BONECO NAO VALE NADA - validar com selfie do personagem real
+  (autotest: `TestPassport` tira `recon\char_selfie_frente/costas.png` com camera
+  propria; `UnlitCharacter=true` + atlas-gradiente = leitura de UV do personagem).
 - **Pipeline de mapeamento UV** (para saber que região do atlas cai em cada parte
   do corpo): vestir o boneco com `UVGradient_atlas.png` (R=coluna, G=linha, B=0
   como marca d'água), `UnlitDummy=true` no autotest (troca shader por UI/Default →

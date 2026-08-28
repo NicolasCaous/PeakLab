@@ -37,13 +37,14 @@ class MakeSovietTex
             PaintRegion(atlas, 435, 0, 705, 58, 0.0, 0.70, 0.55, 0.18, true);
             // patente (pogony): vermelho dentro da moldura escura do "quadro"
             PaintRegion(atlas, 718, 40, 908, 262, 0.0, 0.70, 0.55, 0.18, true);
-            // meiao -> calca caqui (em cima) + cano de coturno preto (embaixo).
-            // O meiao usa a regiao listrada branca (confirmado no render unlit);
-            // o bloco "janela" recebe o mesmo tratamento por seguranca (sem uso visivel)
+            // meiao/canela do PERSONAGEM REAL: faixa diagonal ate o canto (1023,1023)
+            // (mapeado por selfie unlit com atlas-gradiente; o boneco do passaporte
+            // usa OUTRO mesh com UV proprio - regiao coberta por inteiro para os dois)
             PaintRegion(atlas, 62, 282, 348, 455, 0.15, 0.45, 0.60, 0.12, false);
             PaintRegion(atlas, 62, 455, 348, 625, 0.08, 0.15, 0.12, 0.05, false);
-            PaintRegion(atlas, 448, 598, 972, 800, 0.15, 0.45, 0.60, 0.12, false);
-            PaintRegion(atlas, 448, 800, 972, 1020, 0.08, 0.15, 0.12, 0.05, false);
+            PaintRegion(atlas, 448, 560, 1023, 1023, 0.15, 0.45, 0.60, 0.12, false);
+            // ombreira: a costura do topo da manga sampleia ~(800,360) - banda vermelha
+            PaintRegion(atlas, 748, 328, 852, 398, 0.0, 0.70, 0.55, 0.18, false);
             // estrela vermelha nas costas (antigo emblema de montanha)
             DrawStar(atlas, 712f, 450f, 74f,
                 Color.FromArgb(255, 178, 34, 34), Color.FromArgb(255, 110, 16, 16));
