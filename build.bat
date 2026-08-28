@@ -21,6 +21,8 @@ set "CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
   -r:"%M%\UnityEngine.UIModule.dll" ^
   -r:"%M%\UnityEngine.UI.dll" ^
   -r:"%M%\Unity.TextMeshPro.dll" ^
+  -r:"%M%\PhotonUnityNetworking.dll" ^
+  -r:"%M%\PhotonRealtime.dll" ^
   -r:"%M%\Assembly-CSharp.dll" ^
   -r:"%M%\Zorro.ControllerSupport.dll" ^
   -r:"%M%\Zorro.Core.Runtime.dll" ^

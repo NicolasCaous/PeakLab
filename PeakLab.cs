@@ -19,7 +19,7 @@ using UnityEngine.Events;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
-[BepInPlugin("nicolas.peaklab", "PeakLab", "1.2.2")]
+[BepInPlugin("nicolas.peaklab", "PeakLab", "1.2.3")]
 public class PeakLabPlugin : BaseUnityPlugin
 {
     internal static ManualLogSource Log;
@@ -100,7 +100,7 @@ public class PeakLabPlugin : BaseUnityPlugin
                 new HarmonyMethod(typeof(PeakLabPlugin).GetMethod("StartGamePrefix",
                     BindingFlags.Static | BindingFlags.NonPublic)), null);
             SceneManager.sceneLoaded += OnSceneLoaded;
-            Log.LogInfo("PeakLab 1.2.2 pronto");
+            Log.LogInfo("PeakLab 1.2.3 pronto");
         }
         catch (Exception e)
         {
@@ -529,11 +529,48 @@ public class PeakLabPlugin : BaseUnityPlugin
                 if (before.TryGetValue(c.gameObject.GetInstanceID(), out wasActive) && wasActive) continue;
                 populated++;
                 ran += RunGeneratorsUnder(c);
+                FixPhotonViews(c);
             }
         }
         if (populated > 0)
             Log.LogInfo("[PeakLab] " + populated + " conteinere(s) recem-ativado(s) povoado(s) (" +
                         ran + " geradores)");
+    }
+
+    // objetos spawnados em runtime nascem com PhotonView sem ViewID (no vanilla
+    // esses spawns eram baked no editor e ganhavam ID de cena). Sem ID, RPCs como
+    // o de abrir mala vao para o vacuo. Aqui registramos cada view orfao.
+    private static void FixPhotonViews(Component container)
+    {
+        try
+        {
+            Photon.Pun.PhotonView[] views =
+                container.GetComponentsInChildren<Photon.Pun.PhotonView>(true);
+            int orfaos = 0;
+            int ok = 0;
+            foreach (Photon.Pun.PhotonView v in views)
+            {
+                if (v == null || v.ViewID != 0) continue;
+                orfaos++;
+                bool done = false;
+                try { done = Photon.Pun.PhotonNetwork.AllocateSceneViewID(v); }
+                catch (Exception) { }
+                if (!done)
+                {
+                    try { done = Photon.Pun.PhotonNetwork.AllocateViewID(v); }
+                    catch (Exception) { }
+                }
+                if (done) ok++;
+                else Log.LogWarning("[PeakLab] ViewID nao alocado: " + v.gameObject.name);
+            }
+            if (orfaos > 0)
+                Log.LogInfo("[PeakLab] " + container.gameObject.name + ": " + orfaos +
+                            " PhotonView(s) orfao(s), " + ok + " registrado(s)");
+        }
+        catch (Exception e)
+        {
+            Log.LogError("[PeakLab] FixPhotonViews: " + e);
+        }
     }
 
     // troca segments[slotVariante] <-> variantSegments[0] quando o alvo difere do baked

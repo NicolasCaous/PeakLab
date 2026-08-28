@@ -162,6 +162,15 @@ O daily do vanilla nunca re-sorteia nada disso.
   `EmAndamento` vira `Abandonou` no Load da sessão seguinte). **Não usar `JsonUtility`
   para classes do mod** — serializa `{}` vazio (limitação com assemblies externos);
   por isso o formato é TSV manual.
+- **REGRA DE OURO para spawns em runtime (v1.2.3)**: objetos instanciados pelos
+  geradores nascem com `PhotonView.ViewID == 0` (no vanilla eram baked e ganhavam ID
+  de cena). RPCs neles vão para o vácuo — sintoma real: mala completava o cast e nunca
+  abria (seed 724957, ~474 views órfãos numa ilha). Correção: após popular um contêiner,
+  varrer `GetComponentsInChildren<PhotonView>(true)` e registrar cada ViewID==0 com
+  `PhotonNetwork.AllocateSceneViewID(v)` (fallback `AllocateViewID(v)`). Qualquer
+  trabalho futuro de regeneração de props PRECISA repetir esse pós-processo.
+- `tools/DumpApi` aceita `@OutroAssembly.dll` como argumento para inspecionar DLLs
+  além do Assembly-CSharp (ex.: `@PhotonUnityNetworking.dll PhotonNetwork`).
 
 ## 4. Componentes do repo
 

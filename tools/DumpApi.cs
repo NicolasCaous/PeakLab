@@ -18,7 +18,13 @@ class DumpApi
         }
         _dir = args[0];
         AppDomain.CurrentDomain.AssemblyResolve += Resolve;
-        Assembly asm = Assembly.LoadFrom(Path.Combine(_dir, "Assembly-CSharp.dll"));
+        // por padrao inspeciona o Assembly-CSharp; um argumento "@Foo.dll" troca o alvo
+        string asmFile = "Assembly-CSharp.dll";
+        for (int i = 1; i < args.Length; i++)
+        {
+            if (args[i].StartsWith("@")) asmFile = args[i].Substring(1);
+        }
+        Assembly asm = Assembly.LoadFrom(Path.Combine(_dir, asmFile));
         Type[] types;
         try { types = asm.GetTypes(); }
         catch (ReflectionTypeLoadException e)
@@ -31,6 +37,7 @@ class DumpApi
             bool hit = false;
             for (int i = 1; i < args.Length; i++)
             {
+                if (args[i].StartsWith("@")) continue;
                 if (t.Name.IndexOf(args[i], StringComparison.OrdinalIgnoreCase) >= 0) { hit = true; break; }
             }
             if (!hit) continue;

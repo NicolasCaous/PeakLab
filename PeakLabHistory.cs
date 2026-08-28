@@ -1,4 +1,4 @@
-// PeakLabHistory - historico persistente de escaladas (parte do PeakLab.dll)
+// PeakLabHistory + FixPhotonViews - parte do PeakLab.dll
 // Grava cada embarque (data, seed, cena, pool, variantes, ascent) e o desfecho
 // lido dos banners da EndScreen (Terminou/Falhou). JSON em BepInEx\PeakLabHistory.json
 using System;
