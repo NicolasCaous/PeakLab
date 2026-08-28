@@ -41,7 +41,8 @@ class DumpApi
                 if (t.Name.IndexOf(args[i], StringComparison.OrdinalIgnoreCase) >= 0) { hit = true; break; }
             }
             if (!hit) continue;
-            Dump(t);
+            try { Dump(t); }
+            catch (Exception ex) { Console.WriteLine("  [erro ao inspecionar " + t.FullName + ": " + ex.GetType().Name + "]"); }
         }
         return 0;
     }
@@ -81,8 +82,13 @@ class DumpApi
         foreach (MethodInfo m in t.GetMethods(f))
         {
             if (m.IsSpecialName || m.Name.IndexOf('<') >= 0) continue;
-            string ps = string.Join(", ", m.GetParameters()
-                .Select(delegate(ParameterInfo pp) { return Nice(pp.ParameterType) + " " + pp.Name; }).ToArray());
+            string ps;
+            try
+            {
+                ps = string.Join(", ", m.GetParameters()
+                    .Select(delegate(ParameterInfo pp) { return Nice(pp.ParameterType) + " " + pp.Name; }).ToArray());
+            }
+            catch (Exception) { ps = "?"; }
             Console.WriteLine("  M " + Vis(m.IsPublic) + (m.IsStatic ? "static " : "") + Nice(m.ReturnType) + " " + m.Name + "(" + ps + ")");
         }
     }

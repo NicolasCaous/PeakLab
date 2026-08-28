@@ -50,6 +50,13 @@ desligado por padrão).
    e o tempo da run. **Clicar numa linha copia a seed de volta pro campo** — é assim
    que você "salva" e rejoga um mapa que gostou. Os dados ficam em
    `PEAK\BepInEx\PeakLabHistory.tsv` (abre direto no Excel).
+5. **Uniforme de soldado soviético** ☭ — abra o **passaporte** (item 1 na mão →
+   "open"), aba de **roupas** (camiseta): o uniforme é o último da grade. Gimnastyorka
+   cáqui com estrela vermelha no peito, gravata vermelha, botas pretas — e o fit
+   **equipa sozinho o capacete de aço com estrela** (como os casacos de inverno fazem
+   com o capuz). Aviso: outros jogadores só veem o uniforme se também tiverem o mod;
+   sem o mod instalado, o save fica apontando para uma roupa que não existe — troque
+   de roupa **antes** de desinstalar.
 
 ## Configuração
 
@@ -61,6 +68,7 @@ Arquivo: `PEAK\BepInEx\config\nicolas.peaklab.cfg`
 | `[Geracao] PoolDeVariantes` | `Padrao` | `Padrao` = só variantes que os devs usaram nos 6 mapas oficiais; `Todas` = catálogo completo (JellyHell, SkyJungle, BlueBeach...) |
 | `[Geracao] FullRegenerate` | `false` | **NÃO USAR** — apaga paredes que não voltam (ilha vazia no oceano) |
 | `[Avancado] Montanha/Praia/Selva/Neve` | `Auto` | Espelham os seletores da UI |
+| `[Skins] FitSovietico` | `true` | Adiciona o uniforme soviético (com capacete) ao passaporte |
 
 Como funciona por baixo: os contêineres de variante vêm vazios de fábrica (o conteúdo
 só foi assado na variante ativa de cada cena). O PeakLab ativa a variante sorteada e

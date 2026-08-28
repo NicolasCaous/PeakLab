@@ -1,5 +1,6 @@
-// PeakRecon 0.1.0 - plugin passivo de diagnostico para PEAK v1.35.a
+// PeakRecon 0.2.0 - plugin passivo de diagnostico para PEAK v1.35.a
 // Nao altera nada do jogo: apenas escreve dumps em BepInEx\recon\
+// 0.2.0: dump do sistema de customizacao (catalogos + export de texturas em PNG)
 // Compilado com csc.exe (C# 5) contra os DLLs do proprio jogo.
 using System;
 using System.Collections;
@@ -12,9 +13,11 @@ using BepInEx;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
-[BepInPlugin("nicolas.peakrecon", "PeakRecon", "0.1.0")]
+[BepInPlugin("nicolas.peakrecon", "PeakRecon", "0.2.0")]
 public class PeakReconPlugin : BaseUnityPlugin
 {
+    private bool _customizationDumped;
+
     // tipos cuja API completa vai para types.txt
     private static readonly string[] TypeKeys = new string[]
     {
@@ -151,6 +154,132 @@ public class PeakReconPlugin : BaseUnityPlugin
         {
             Logger.LogError("PeakRecon: dump da cena falhou: " + e);
         }
+        if (!_customizationDumped)
+        {
+            try { _customizationDumped = DumpCustomization(); }
+            catch (Exception e)
+            {
+                Logger.LogError("PeakRecon: dump de customizacao falhou: " + e);
+                _customizationDumped = true; // nao insistir a cada cena
+            }
+        }
+    }
+
+    // ---------- customizacao (skins/fits/hats/...) ----------
+
+    private bool DumpCustomization()
+    {
+        UnityEngine.Object[] found = Resources.FindObjectsOfTypeAll(typeof(Customization));
+        if (found.Length == 0) return false;
+        Customization c = (Customization)found[0];
+        string texDir = Path.Combine(_dir, "tex");
+        Directory.CreateDirectory(texDir);
+        StringBuilder sb = new StringBuilder();
+        sb.AppendLine("PeakRecon customization.txt - " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+        sb.AppendLine("Texturas exportadas em recon\\tex\\*.png");
+        DumpCatalog("skins", c.skins, sb, texDir, false);
+        DumpCatalog("accessories", c.accessories, sb, texDir, true);
+        DumpCatalog("eyes", c.eyes, sb, texDir, false);
+        DumpCatalog("mouths", c.mouths, sb, texDir, false);
+        DumpCatalog("fits", c.fits, sb, texDir, true);
+        DumpCatalog("hats", c.hats, sb, texDir, true);
+        DumpCatalog("sashes", c.sashes, sb, texDir, true);
+        DumpRefs(sb, texDir);
+        File.WriteAllText(Path.Combine(_dir, "customization.txt"), sb.ToString());
+        Logger.LogInfo("PeakRecon: customization.txt + texturas escritos");
+        return true;
+    }
+
+    private void DumpCatalog(string label, CustomizationOption[] opts, StringBuilder sb, string texDir, bool exportTex)
+    {
+        sb.AppendLine();
+        sb.AppendLine("### " + label + " x" + (opts == null ? 0 : opts.Length));
+        if (opts == null) return;
+        for (int i = 0; i < opts.Length; i++)
+        {
+            CustomizationOption o = opts[i];
+            if (o == null) { sb.AppendLine("  [" + i + "] null"); continue; }
+            string locked;
+            try { locked = o.IsLocked ? "BLOQUEADO" : "livre"; }
+            catch (Exception) { locked = "?"; }
+            sb.AppendLine("  [" + i + "] " + o.name + "  (" + locked + ")");
+            sb.AppendLine("      color=" + o.color + " reqAch=" + o.requiredAchievement +
+                          " reqAscent=" + (o.requiresAscent ? o.requiredAscent.ToString() : "-") +
+                          " custom=" + o.customRequirement + " testLocked=" + o.testLocked);
+            if (o.texture != null)
+            {
+                sb.AppendLine("      texture=" + o.texture.name + " " + o.texture.width + "x" + o.texture.height);
+                if (exportTex) SavePng(o.texture, texDir, label + "_" + i + "_" + o.name + "_tex");
+            }
+            if (o.fitMesh != null) sb.AppendLine("      fitMesh=" + o.fitMesh.name);
+            DumpMat("fitMaterial", o.fitMaterial, sb, texDir, exportTex, label + "_" + i + "_" + o.name);
+            DumpMat("fitMaterialShoes", o.fitMaterialShoes, sb, texDir, false, null);
+            DumpMat("fitMaterialOverridePants", o.fitMaterialOverridePants, sb, texDir, false, null);
+            DumpMat("fitMaterialOverrideHat", o.fitMaterialOverrideHat, sb, texDir, false, null);
+            if (o.overrideHat) sb.AppendLine("      overrideHat -> index " + o.overrideHatIndex);
+        }
+    }
+
+    private void DumpMat(string label, Material m, StringBuilder sb, string texDir, bool exportTex, string fileBase)
+    {
+        if (m == null) return;
+        Texture main = null;
+        try { main = m.mainTexture; } catch (Exception) { }
+        sb.AppendLine("      " + label + "=" + m.name + " shader=" + m.shader.name +
+                      (main != null ? " mainTex=" + main.name + " " + main.width + "x" + main.height : " (sem mainTex)"));
+        if (exportTex && main != null && fileBase != null) SavePng(main, texDir, fileBase + "_mat");
+    }
+
+    private void DumpRefs(StringBuilder sb, string texDir)
+    {
+        UnityEngine.Object[] refsAll = Resources.FindObjectsOfTypeAll(typeof(CustomizationRefs));
+        sb.AppendLine();
+        sb.AppendLine("### CustomizationRefs x" + refsAll.Length + " (renderers do personagem)");
+        if (refsAll.Length == 0) return;
+        CustomizationRefs r = (CustomizationRefs)refsAll[0];
+        sb.AppendLine("  em: " + PathOf(r.transform));
+        if (r.mainRenderer != null)
+        {
+            DumpMat("mainRenderer", r.mainRenderer.sharedMaterial, sb, texDir, true, "body_main");
+            Mesh mm = r.mainRenderer.sharedMesh;
+            if (mm != null) sb.AppendLine("      mainMesh=" + mm.name);
+        }
+        if (r.sashRenderer != null) DumpMat("sash", r.sashRenderer.sharedMaterial, sb, texDir, true, "body_sash");
+        if (r.shorts != null) DumpMat("shorts", r.shorts.sharedMaterial, sb, texDir, true, "body_shorts");
+        if (r.playerHats != null)
+        {
+            sb.AppendLine("  playerHats x" + r.playerHats.Length + ":");
+            for (int i = 0; i < r.playerHats.Length; i++)
+            {
+                Renderer h = r.playerHats[i];
+                if (h == null) { sb.AppendLine("    [" + i + "] null"); continue; }
+                sb.AppendLine("    [" + i + "] " + h.name);
+                DumpMat("hatMat", h.sharedMaterial, sb, texDir, i < 40, "hat_" + i + "_" + h.name);
+            }
+        }
+    }
+
+    private static void SavePng(Texture tex, string dir, string baseName)
+    {
+        try
+        {
+            if (tex == null || tex.width <= 0) return;
+            string file = Path.Combine(dir, Sanitize(baseName) + ".png");
+            if (File.Exists(file)) return;
+            RenderTexture rt = RenderTexture.GetTemporary(tex.width, tex.height, 0,
+                RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+            Graphics.Blit(tex, rt);
+            RenderTexture prev = RenderTexture.active;
+            RenderTexture.active = rt;
+            Texture2D t2 = new Texture2D(tex.width, tex.height, TextureFormat.RGBA32, false);
+            t2.ReadPixels(new Rect(0, 0, tex.width, tex.height), 0, 0);
+            t2.Apply();
+            RenderTexture.active = prev;
+            RenderTexture.ReleaseTemporary(rt);
+            File.WriteAllBytes(file, ImageConversion.EncodeToPNG(t2));
+            UnityEngine.Object.Destroy(t2);
+        }
+        catch (Exception) { }
     }
 
     private void DumpInterestingObjects(StringBuilder sb)

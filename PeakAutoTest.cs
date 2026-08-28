@@ -24,6 +24,8 @@ public class PeakAutoTestPlugin : BaseUnityPlugin
     private ConfigEntry<string> _jumpTo;
     private ConfigEntry<string> _sceneOverride;
     private ConfigEntry<bool> _testUI;
+    private ConfigEntry<bool> _airportOnly;
+    private ConfigEntry<bool> _testPassport;
     private bool _soloClicked;
     private bool _boarded;
 
@@ -37,6 +39,8 @@ public class PeakAutoTestPlugin : BaseUnityPlugin
         _jumpTo = Config.Bind("AutoTest", "JumpToSegment", "", "Se preenchido (ex: Alpine), chama MapHandler.JumpToSegment aos 15s na ilha");
         _sceneOverride = Config.Bind("AutoTest", "SceneOverride", "", "Se preenchido (ex: Level_3), embarca nessa cena em vez da daily");
         _testUI = Config.Bind("AutoTest", "TestBoardingUI", false, "Abre e fecha a boarding pass antes de embarcar (testa a UI injetada)");
+        _airportOnly = Config.Bind("AutoTest", "AirportOnly", false, "Para no Airport, espera QuitAfterSeconds e fecha (nao embarca)");
+        _testPassport = Config.Bind("AutoTest", "TestPassport", false, "No Airport: veste o Fit_Soviet + bone, abre o passaporte, tira screenshot e fecha");
         if (!_enabled.Value)
         {
             Log.LogInfo("[AutoTest] desligado");
@@ -92,6 +96,22 @@ public class PeakAutoTestPlugin : BaseUnityPlugin
 
     private IEnumerator Board()
     {
+        if (_testPassport.Value)
+        {
+            _boarded = true;
+            yield return StartCoroutine(PassportTest());
+            yield break;
+        }
+        if (_airportOnly.Value)
+        {
+            int wait = _quitAfter.Value > 0 ? _quitAfter.Value : 15;
+            Log.LogInfo("[AutoTest] modo AirportOnly: esperando " + wait + "s no aeroporto e fechando");
+            _boarded = true;
+            yield return new WaitForSeconds((float)wait);
+            Log.LogInfo("[AutoTest] fim do teste (AirportOnly), fechando o jogo");
+            Application.Quit();
+            yield break;
+        }
         Log.LogInfo("[AutoTest] Airport carregado; esperando 10s para embarcar");
         yield return new WaitForSeconds(10f);
         // injeta a seed de teste direto no PeakLab (mesma via da UI)
@@ -143,6 +163,98 @@ public class PeakAutoTestPlugin : BaseUnityPlugin
             yield return new WaitForSeconds(3f);
         }
         Log.LogError("[AutoTest] nao achei o AirportCheckInKiosk");
+    }
+
+    private IEnumerator PassportTest()
+    {
+        Log.LogInfo("[AutoTest] TestPassport: esperando 12s do aeroporto assentar");
+        yield return new WaitForSeconds(12f);
+        int idx = -1;
+        Customization cat = UnityEngine.Object.FindObjectOfType<Customization>();
+        if (cat == null)
+        {
+            UnityEngine.Object[] all = Resources.FindObjectsOfTypeAll(typeof(Customization));
+            if (all.Length > 0) cat = (Customization)all[0];
+        }
+        if (cat != null && cat.fits != null)
+        {
+            for (int i = 0; i < cat.fits.Length; i++)
+            {
+                if (cat.fits[i] != null && cat.fits[i].name == "Fit_Soviet") { idx = i; break; }
+            }
+        }
+        if (idx >= 0)
+        {
+            Log.LogInfo("[AutoTest] Fit_Soviet no indice " + idx + "; vestindo fit + bone (override deve trocar por capacete)");
+            CharacterCustomization.SetCharacterOutfit(idx);
+            CharacterCustomization.SetCharacterHat(0); // o overrideHat do fit deve vencer
+        }
+        else Log.LogError("[AutoTest] Fit_Soviet NAO esta no catalogo!");
+        yield return new WaitForSeconds(1f);
+        PassportManager pm = PassportManager.instance;
+        if (pm != null)
+        {
+            Log.LogInfo("[AutoTest] abrindo passaporte via Show()");
+            pm.Show();
+            yield return new WaitForSeconds(2f);
+            if (!pm.isOpen)
+            {
+                // Show() so ergue o item na mao; o "open" de verdade e a acao do item
+                Action_Passport act = UnityEngine.Object.FindObjectOfType<Action_Passport>();
+                if (act != null)
+                {
+                    Log.LogInfo("[AutoTest] chamando Action_Passport.RunAction()");
+                    act.RunAction();
+                    yield return new WaitForSeconds(2f);
+                }
+                else Log.LogWarning("[AutoTest] Action_Passport nao encontrado");
+            }
+            Log.LogInfo("[AutoTest] passaporte isOpen=" + pm.isOpen);
+            try
+            {
+                // o tipo do enum vem da propria assinatura de OpenTab
+                MethodInfo mOpen = AccessTools.Method(typeof(PassportManager), "OpenTab");
+                Type et = mOpen.GetParameters()[0].ParameterType;
+                object fitTab = Enum.Parse(et, "Fit");
+                mOpen.Invoke(pm, new object[] { fitTab });
+                Log.LogInfo("[AutoTest] aba de fits aberta (enum " + et.FullName + ")");
+            }
+            catch (Exception e) { Log.LogWarning("[AutoTest] OpenTab(Fit) falhou: " + e.Message); }
+        }
+        else Log.LogWarning("[AutoTest] PassportManager.instance nulo");
+        yield return new WaitForSeconds(3f);
+        // prova extra: salva o render do boneco de preview direto da camera dele
+        try
+        {
+            if (pm != null && pm.dummyCamera != null && pm.dummyCamera.targetTexture != null)
+            {
+                string rtFile = System.IO.Path.Combine(BepInEx.Paths.GameRootPath,
+                    System.IO.Path.Combine("BepInEx", System.IO.Path.Combine("recon", "dummy_rt.png")));
+                SaveRT(pm.dummyCamera.targetTexture, rtFile);
+                Log.LogInfo("[AutoTest] render do boneco salvo em " + rtFile);
+            }
+            else Log.LogInfo("[AutoTest] dummyCamera sem targetTexture; pulando dump do boneco");
+        }
+        catch (Exception e) { Log.LogWarning("[AutoTest] dump do boneco falhou: " + e.Message); }
+        string shot = System.IO.Path.Combine(BepInEx.Paths.GameRootPath,
+            System.IO.Path.Combine("BepInEx", System.IO.Path.Combine("recon", "passport_test.png")));
+        Log.LogInfo("[AutoTest] screenshot -> " + shot);
+        ScreenCapture.CaptureScreenshot(shot);
+        yield return new WaitForSeconds(2f);
+        Log.LogInfo("[AutoTest] fim do teste (TestPassport), fechando o jogo");
+        Application.Quit();
+    }
+
+    private static void SaveRT(RenderTexture rt, string file)
+    {
+        RenderTexture prev = RenderTexture.active;
+        RenderTexture.active = rt;
+        Texture2D t2 = new Texture2D(rt.width, rt.height, TextureFormat.RGBA32, false);
+        t2.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0);
+        t2.Apply();
+        RenderTexture.active = prev;
+        System.IO.File.WriteAllBytes(file, ImageConversion.EncodeToPNG(t2));
+        UnityEngine.Object.Destroy(t2);
     }
 
     private IEnumerator JumpLater()

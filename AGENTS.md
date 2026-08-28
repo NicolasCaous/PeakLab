@@ -172,14 +172,55 @@ O daily do vanilla nunca re-sorteia nada disso.
 - `tools/DumpApi` aceita `@OutroAssembly.dll` como argumento para inspecionar DLLs
   além do Assembly-CSharp (ex.: `@PhotonUnityNetworking.dll PhotonNetwork`).
 
+### Sistema de customização (skins/fits/chapéus) — v1.3.0
+
+- `Customization` (singleton Zorro) tem catálogos `CustomizationOption[]`: `skins`(9),
+  `accessories`(20), `eyes`(18), `mouths`(19), `fits`(20), `hats`(27), `sashes`(9).
+  Dump completo + texturas em PNG: `PeakRecon 0.2.0` escreve `recon\customization.txt`
+  e `recon\tex\*.png` na primeira cena que tiver o singleton.
+- **Todo fit é só material+textura** no mesmo mesh (`MainMesh`, shader `W/Character`,
+  atlas 1024x1024). Adicionar um fit = clonar uma option (`Object.Instantiate`), trocar
+  `fitMaterial` (clone com `mainTexture` própria) e **anexar ao array `fits`** — o
+  passaporte (`PassportManager.SetButtons`) lê o catálogo dinamicamente e mostra
+  sozinho (grade comporta pelo menos 21). Zerar `requiredAchievement`/`testLocked`
+  para nascer desbloqueado. Marcar `hideFlags = DontUnloadUnusedAsset` em option,
+  material e texturas (senão `UnloadUnusedAssets` pode coletá-los entre cenas).
+- Os chapéus Cap(0) e Beret(1) usam `fitHatMaterial` do fit corrente — combinam com
+  qualquer fit novo de graça. `fitMaterialOverrideHat` customiza isso.
+- **`overrideHat`/`overrideHatIndex` no fit força um chapéu** (os fits Bundled forçam
+  os capuzes 27/28 assim). Chapéus são renderers baked por personagem
+  (`CustomizationRefs.playerHats[]`, 29 no vanilla, índice do catálogo = índice do
+  array). Chapéu NOVO = clonar o GameObject de um existente em CADA personagem e
+  anexar ao array — `PeakLabSkins.ExtendRefs` faz isso (capacete soviético = clone do
+  MedicHelmet[7] no índice 29), chamado por postfix em `CharacterCustomization.Awake`,
+  prefix em `SetCustomizationForRef` (boneco do passaporte) e sweep no sceneLoaded.
+- A escolha é salva POR ÍNDICE em `PersistentPlayerData` — remover o mod com o fit
+  20 equipado deixa o save apontando para fora do catálogo (documentado no config).
+- Enum das abas do passaporte: `Customization+Type` (aninhado em `Customization`,
+  NÃO em CustomizationOption). Para abrir programaticamente: derivar o enum de
+  `AccessTools.Method(typeof(PassportManager), "OpenTab").GetParameters()[0]`.
+- Abrir o passaporte via código: `PassportManager.Show()` só ergue o item na mão;
+  quem abre a UI de verdade é `Action_Passport.RunAction()` (checar `pm.isOpen`).
+- Texturas do mod ficam EMBUTIDAS na DLL (`csc -resource:arquivo.png,NomeLogico`),
+  carregadas com `GetManifestResourceStream` + `ImageConversion.LoadImage` — a
+  instalação continua sendo um único arquivo.
+- `tools/MakeSovietTex.cs` (System.Drawing) gera as texturas a partir dos dumps:
+  remap por família de cor em HSV (preserva sombreado pintado), clone-stamp para
+  apagar emblemas, estrela desenhada por polígono. Iterar: gerar → build → autopilot
+  `TestPassport=true` → ver `recon\passport_test.png` e `recon\dummy_rt.png`.
+
 ## 4. Componentes do repo
 
 | Arquivo | Papel |
 |---|---|
 | `PeakLab.cs` | O mod principal (UI + motor). ~500 linhas, C# 5. |
-| `PeakRecon.cs` | Recon passivo: dumpa API (`types.txt`) e cenas (`scene_*.txt`). Sem Harmony. |
-| `PeakAutoTest.cs` | Piloto automático de teste. `Enabled=false` por padrão — SEMPRE devolver para false após testes. |
+| `PeakLabHistory.cs` | Histórico de escaladas (TSV + modal HISTORICO). |
+| `PeakLabSkins.cs` | Fit_Soviet no catálogo + capacete via `ExtendRefs`. Texturas embutidas na DLL. |
+| `PeakRecon.cs` | Recon passivo: dumpa API (`types.txt`), cenas (`scene_*.txt`) e customização (`customization.txt` + `tex\*.png`). Sem Harmony. |
+| `PeakAutoTest.cs` | Piloto automático de teste (`AirportOnly`, `TestPassport`, seed, screenshots). `Enabled=false` por padrão — SEMPRE devolver para false após testes. |
 | `tools/DumpApi.cs` | Inspetor offline de `Assembly-CSharp.dll` por reflexão. Não precisa do jogo aberto. |
+| `tools/MakeSovietTex.cs` | Gerador offline das texturas soviéticas a partir dos dumps do PeakRecon. |
+| `assets/` | PNGs gerados (atlas/ícone/capacete) que o build embute na PeakLab.dll. |
 | `build.bat` | Compila tudo e instala os DLLs no jogo. |
 | `testlogs/` | Logs arquivados dos 16 runs de pesquisa (fora do git; fonte das conclusões acima). |
 

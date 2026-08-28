@@ -19,7 +19,7 @@ using UnityEngine.Events;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
-[BepInPlugin("nicolas.peaklab", "PeakLab", "1.2.3")]
+[BepInPlugin("nicolas.peaklab", "PeakLab", "1.3.0")]
 public class PeakLabPlugin : BaseUnityPlugin
 {
     internal static ManualLogSource Log;
@@ -49,6 +49,7 @@ public class PeakLabPlugin : BaseUnityPlugin
     private static ConfigEntry<string> CfgBeach;
     private static ConfigEntry<string> CfgJungle;
     private static ConfigEntry<string> CfgSnow;
+    private static ConfigEntry<bool> CfgSovietFit;
 
     private static TMP_InputField _input;
     private static readonly List<GameObject> _advRows = new List<GameObject>();
@@ -81,6 +82,9 @@ public class PeakLabPlugin : BaseUnityPlugin
         CfgBeach = Config.Bind("Avancado", "Praia", "Auto", "Auto ou variante fixa da praia");
         CfgJungle = Config.Bind("Avancado", "Selva", "Auto", "Auto ou variante fixa da selva");
         CfgSnow = Config.Bind("Avancado", "Neve", "Auto", "Auto ou variante fixa da neve (so vale com Alpine)");
+        CfgSovietFit = Config.Bind("Skins", "FitSovietico", true,
+            "Adiciona o uniforme de soldado sovietico ao passaporte (aba de roupas). " +
+            "AVISO: o jogo salva a roupa por indice; troque de roupa antes de remover o mod");
         try
         {
             Harmony h = new Harmony("nicolas.peaklab");
@@ -99,8 +103,15 @@ public class PeakLabPlugin : BaseUnityPlugin
             h.Patch(AccessTools.Method(typeof(BoardingPass), "StartGame"),
                 new HarmonyMethod(typeof(PeakLabPlugin).GetMethod("StartGamePrefix",
                     BindingFlags.Static | BindingFlags.NonPublic)), null);
+            // skins: garante o slot do capacete em todo personagem/boneco antes do apply
+            h.Patch(AccessTools.Method(typeof(CharacterCustomization), "Awake"), null,
+                new HarmonyMethod(typeof(PeakLabPlugin).GetMethod("CharCustomAwakePostfix",
+                    BindingFlags.Static | BindingFlags.NonPublic)));
+            h.Patch(AccessTools.Method(typeof(CharacterCustomization), "SetCustomizationForRef"),
+                new HarmonyMethod(typeof(PeakLabPlugin).GetMethod("SetCustomForRefPrefix",
+                    BindingFlags.Static | BindingFlags.NonPublic)), null);
             SceneManager.sceneLoaded += OnSceneLoaded;
-            Log.LogInfo("PeakLab 1.2.3 pronto");
+            Log.LogInfo("PeakLab 1.3.0 pronto");
         }
         catch (Exception e)
         {
@@ -353,8 +364,25 @@ public class PeakLabPlugin : BaseUnityPlugin
 
     // ==================== MOTOR ====================
 
+    private static void CharCustomAwakePostfix(CharacterCustomization __instance)
+    {
+        try { if (CfgSovietFit.Value) PeakLabSkins.ExtendRefs(__instance.refs); }
+        catch (Exception) { }
+    }
+
+    private static void SetCustomForRefPrefix(CustomizationRefs refs)
+    {
+        try { if (CfgSovietFit.Value) PeakLabSkins.ExtendRefs(refs); }
+        catch (Exception) { }
+    }
+
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
+        if (CfgSovietFit.Value)
+        {
+            try { PeakLabSkins.EnsureRegistered(Log); }
+            catch (Exception e) { Log.LogError("[PeakLab] registro de skins falhou: " + e); }
+        }
         if (!scene.name.StartsWith("Level_")) return;
         try
         {
