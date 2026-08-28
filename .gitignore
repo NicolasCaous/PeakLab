@@ -1,3 +1,4 @@
 *.dll
 testlogs/
 *.exe
+tools/*.exe
