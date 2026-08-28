@@ -205,25 +205,56 @@ public static class PeakLabHistory
         Transform canvasRoot = bp.transform; // Canvas_BoardingPass
         float fs = bp.ascentDesc.fontSize;
 
+        // fundo escurecido em tela cheia, sempre por cima do ticket
         _panel = new GameObject("PeakLab_HistoryPanel", typeof(RectTransform));
         _panel.transform.SetParent(canvasRoot, false);
         RectTransform pr = (RectTransform)_panel.transform;
-        pr.anchorMin = new Vector2(1f, 0.5f);
-        pr.anchorMax = new Vector2(1f, 0.5f);
-        pr.pivot = new Vector2(1f, 0.5f);
-        pr.anchoredPosition = new Vector2(-24f, 0f);
-        pr.sizeDelta = new Vector2(700f, 760f);
-        Image bg = _panel.AddComponent<Image>();
-        Image ticketImg = bp.ascentDesc.transform.parent.GetComponent<Image>();
-        if (ticketImg != null)
-        {
-            bg.sprite = ticketImg.sprite;
-            bg.type = ticketImg.type;
-            bg.color = ticketImg.color;
-        }
-        else bg.color = new Color(0.97f, 0.95f, 0.90f, 0.98f);
+        pr.anchorMin = Vector2.zero;
+        pr.anchorMax = Vector2.one;
+        pr.offsetMin = Vector2.zero;
+        pr.offsetMax = Vector2.zero;
+        Canvas cv = _panel.AddComponent<Canvas>();
+        cv.overrideSorting = true;
+        cv.sortingOrder = 500;
+        _panel.AddComponent<GraphicRaycaster>();
+        Image dim = _panel.AddComponent<Image>();
+        dim.color = new Color(0f, 0f, 0f, 0.55f);
+        Button dimBtn = _panel.AddComponent<Button>();
+        dimBtn.targetGraphic = dim;
+        dimBtn.onClick.AddListener(delegate { _panel.SetActive(false); });
 
-        TMP_Text title = CloneText(bp, _panel.transform, "Title", "HISTORICO DE ESCALADAS", fs + 6f);
+        // cartao branco estilo ticket, centralizado
+        GameObject card = new GameObject("Card", typeof(RectTransform));
+        card.transform.SetParent(_panel.transform, false);
+        RectTransform cr = (RectTransform)card.transform;
+        cr.anchorMin = new Vector2(0.5f, 0.5f);
+        cr.anchorMax = new Vector2(0.5f, 0.5f);
+        cr.pivot = new Vector2(0.5f, 0.5f);
+        cr.anchoredPosition = Vector2.zero;
+        cr.sizeDelta = new Vector2(760f, 820f);
+        Image cardImg = card.AddComponent<Image>();
+        Image src = null;
+        Transform ticketPanel = bp.transform.Find("BoardingPass/Panel");
+        if (ticketPanel != null) src = ticketPanel.GetComponent<Image>();
+        if (src != null && src.sprite != null)
+        {
+            cardImg.sprite = src.sprite;
+            cardImg.type = src.type;
+            cardImg.color = Color.white;
+        }
+        else cardImg.color = new Color(0.96f, 0.94f, 0.89f, 1f);
+
+        // X de fechar
+        Button close = CloneButton(bp, card.transform, "Close", "X", fs);
+        RectTransform xr = (RectTransform)close.transform;
+        xr.anchorMin = new Vector2(1f, 1f);
+        xr.anchorMax = new Vector2(1f, 1f);
+        xr.pivot = new Vector2(1f, 1f);
+        xr.anchoredPosition = new Vector2(-14f, -14f);
+        xr.sizeDelta = new Vector2(56f, 56f);
+        close.onClick.AddListener(delegate { _panel.SetActive(false); });
+
+        TMP_Text title = CloneText(bp, card.transform, "Title", "HISTORICO DE ESCALADAS", fs + 6f);
         RectTransform tr = title.rectTransform;
         tr.anchorMin = new Vector2(0f, 1f);
         tr.anchorMax = new Vector2(1f, 1f);
@@ -234,7 +265,7 @@ public static class PeakLabHistory
 
         for (int i = 0; i < RowsPerPage; i++)
         {
-            Button row = CloneButton(bp, _panel.transform, "Row" + i, "", fs - 8f);
+            Button row = CloneButton(bp, card.transform, "Row" + i, "", fs - 8f);
             RectTransform rr = (RectTransform)row.transform;
             rr.anchorMin = new Vector2(0f, 1f);
             rr.anchorMax = new Vector2(1f, 1f);
@@ -250,19 +281,19 @@ public static class PeakLabHistory
             _rowLabels.Add(lbl);
         }
 
-        Button prev = CloneButton(bp, _panel.transform, "Prev", "<", fs);
+        Button prev = CloneButton(bp, card.transform, "Prev", "<", fs);
         PlaceBottom(prev, new Vector2(24f, 16f), new Vector2(70f, 52f));
         prev.onClick.AddListener(delegate { ChangePage(-1); });
-        Button next = CloneButton(bp, _panel.transform, "Next", ">", fs);
-        PlaceBottom(next, new Vector2(606f, 16f), new Vector2(70f, 52f));
+        Button next = CloneButton(bp, card.transform, "Next", ">", fs);
+        PlaceBottom(next, new Vector2(666f, 16f), new Vector2(70f, 52f));
         next.onClick.AddListener(delegate { ChangePage(1); });
-        _pageLabel = CloneText(bp, _panel.transform, "Page", "", fs - 4f);
+        _pageLabel = CloneText(bp, card.transform, "Page", "", fs - 4f);
         RectTransform plr = _pageLabel.rectTransform;
         plr.anchorMin = Vector2.zero;
         plr.anchorMax = Vector2.zero;
         plr.pivot = Vector2.zero;
         plr.anchoredPosition = new Vector2(110f, 16f);
-        plr.sizeDelta = new Vector2(480f, 52f);
+        plr.sizeDelta = new Vector2(540f, 52f);
         _pageLabel.alignment = TextAlignmentOptions.Center;
 
         _panel.SetActive(false);

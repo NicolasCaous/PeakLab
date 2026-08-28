@@ -19,7 +19,7 @@ using UnityEngine.Events;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
-[BepInPlugin("nicolas.peaklab", "PeakLab", "1.2.0")]
+[BepInPlugin("nicolas.peaklab", "PeakLab", "1.2.1")]
 public class PeakLabPlugin : BaseUnityPlugin
 {
     internal static ManualLogSource Log;
@@ -100,7 +100,7 @@ public class PeakLabPlugin : BaseUnityPlugin
                 new HarmonyMethod(typeof(PeakLabPlugin).GetMethod("StartGamePrefix",
                     BindingFlags.Static | BindingFlags.NonPublic)), null);
             SceneManager.sceneLoaded += OnSceneLoaded;
-            Log.LogInfo("PeakLab 1.2.0 pronto");
+            Log.LogInfo("PeakLab 1.2.1 pronto");
         }
         catch (Exception e)
         {
@@ -184,6 +184,25 @@ public class PeakLabPlugin : BaseUnityPlugin
         adv.onClick.AddListener(new UnityAction(ToggleAdvanced));
 
         // ---- linhas do modo avancado ----
+        // fundo de papel atras dos botoes (cobre a descricao enquanto aberto)
+        GameObject advBg = new GameObject("PeakLab_AdvBg", typeof(RectTransform));
+        advBg.transform.SetParent(box, false);
+        RectTransform abr = (RectTransform)advBg.transform;
+        abr.anchorMin = Vector2.zero;
+        abr.anchorMax = Vector2.zero;
+        abr.pivot = Vector2.zero;
+        abr.anchoredPosition = new Vector2(W * 0.015f, H * 0.235f);
+        abr.sizeDelta = new Vector2(W * 0.97f, H * 0.62f);
+        Image abgImg = advBg.AddComponent<Image>();
+        Image boxImg = box.GetComponent<Image>();
+        if (boxImg != null && boxImg.sprite != null)
+        {
+            abgImg.sprite = boxImg.sprite;
+            abgImg.type = boxImg.type;
+        }
+        abgImg.color = new Color(0.955f, 0.935f, 0.885f, 1f);
+        _advRows.Add(advBg);
+
         MakeCycler(bp, box, "MONTANHA", MountainOpts, CfgMountain,
             W * 0.03f, H * 0.25f, W * 0.46f, H * 0.17f, fs);
         MakeCycler(bp, box, "PRAIA", BeachOpts, CfgBeach,
