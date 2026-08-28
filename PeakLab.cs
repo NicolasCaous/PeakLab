@@ -19,7 +19,7 @@ using UnityEngine.Events;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
-[BepInPlugin("nicolas.peaklab", "PeakLab", "1.1.0")]
+[BepInPlugin("nicolas.peaklab", "PeakLab", "1.2.0")]
 public class PeakLabPlugin : BaseUnityPlugin
 {
     internal static ManualLogSource Log;
@@ -54,9 +54,13 @@ public class PeakLabPlugin : BaseUnityPlugin
     private static readonly List<GameObject> _advRows = new List<GameObject>();
     private static bool _advOpen;
 
+    private static PeakLabPlugin _i;
+
     private void Awake()
     {
+        _i = this;
         Log = Logger;
+        PeakLabHistory.Load();
         CfgVariants = Config.Bind("Geracao", "RandomizeBiomeVariants", true,
             "Com seed definida, re-sorteia as variantes de bioma da ilha");
         CfgFullRegen = Config.Bind("Geracao", "FullRegenerate", false,
@@ -89,11 +93,14 @@ public class PeakLabPlugin : BaseUnityPlugin
             h.Patch(AccessTools.Method(typeof(MenuWindow), "Show"), null,
                 new HarmonyMethod(typeof(PeakLabPlugin).GetMethod("MenuShowPostfix",
                     BindingFlags.Static | BindingFlags.NonPublic)));
+            h.Patch(AccessTools.Method(typeof(MenuWindow), "OnOpen"), null,
+                new HarmonyMethod(typeof(PeakLabPlugin).GetMethod("MenuShowPostfix",
+                    BindingFlags.Static | BindingFlags.NonPublic)));
             h.Patch(AccessTools.Method(typeof(BoardingPass), "StartGame"),
                 new HarmonyMethod(typeof(PeakLabPlugin).GetMethod("StartGamePrefix",
                     BindingFlags.Static | BindingFlags.NonPublic)), null);
             SceneManager.sceneLoaded += OnSceneLoaded;
-            Log.LogInfo("PeakLab 1.1.0 pronto");
+            Log.LogInfo("PeakLab 1.2.0 pronto");
         }
         catch (Exception e)
         {
@@ -118,7 +125,14 @@ public class PeakLabPlugin : BaseUnityPlugin
     private static void MenuShowPostfix(MenuWindow __instance)
     {
         BoardingPass bp = __instance as BoardingPass;
-        if (bp != null) BoardingPassOpened(bp);
+        if (bp != null) { BoardingPassOpened(bp); return; }
+        EndScreen es = __instance as EndScreen;
+        if (es != null && _i != null) _i.StartCoroutine(PeakLabHistory.PollOutcome(es));
+    }
+
+    internal static void SetSeedText(int seed)
+    {
+        if (_input != null && _input) _input.text = seed.ToString();
     }
 
     private static void BuildUI(BoardingPass bp)
@@ -180,6 +194,10 @@ public class PeakLabPlugin : BaseUnityPlugin
             W * 0.51f, H * 0.44f, W * 0.46f, H * 0.17f, fs);
         MakeCycler(bp, box, "VARIANTES", PoolOpts, CfgPool,
             W * 0.03f, H * 0.63f, W * 0.46f, H * 0.17f, fs);
+        Button hist = CloneButton(bp, box, "PeakLab_HistoryBtn", "HISTORICO", fs - 2f);
+        Place((RectTransform)hist.transform, W * 0.51f, H * 0.63f, W * 0.46f, H * 0.17f);
+        hist.onClick.AddListener(delegate { PeakLabHistory.TogglePanel(bp); });
+        _advRows.Add(hist.gameObject);
         SetAdvancedVisible(false);
         Log.LogInfo("[UI] boarding pass pronta (simples + avancado)");
     }
@@ -335,6 +353,7 @@ public class PeakLabPlugin : BaseUnityPlugin
         if (!hasSeed && !anyPin)
         {
             Log.LogInfo("[PeakLab] " + scene.name + ": daily vanilla puro");
+            PeakLabHistory.StartRun(-1, scene.name, "", CurrentAscent(), GetActiveVariantsSummary());
             LogIslandState();
             return;
         }
@@ -394,7 +413,48 @@ public class PeakLabPlugin : BaseUnityPlugin
             }
         }
 
+        PeakLabHistory.StartRun(hasSeed ? PendingSeed.Value : -1, scene.name,
+            hasSeed ? CfgPool.Value : "", CurrentAscent(), GetActiveVariantsSummary());
         LogIslandState();
+    }
+
+    private static int CurrentAscent()
+    {
+        try
+        {
+            Type t = AccessTools.TypeByName("Ascents");
+            PropertyInfo p = (t != null) ? t.GetProperty("currentAscent",
+                BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic) : null;
+            if (p != null) return (int)p.GetValue(null, null);
+        }
+        catch (Exception) { }
+        return 0;
+    }
+
+    internal static string GetActiveVariantsSummary()
+    {
+        try
+        {
+            Type bv = AccessTools.TypeByName("BiomeVariant");
+            if (bv == null) return "";
+            UnityEngine.Object[] all = Resources.FindObjectsOfTypeAll(bv);
+            System.Text.StringBuilder sb = new System.Text.StringBuilder();
+            foreach (UnityEngine.Object o in all)
+            {
+                Component c = o as Component;
+                if (c == null || !c.gameObject.scene.IsValid()) continue;
+                if (!c.gameObject.activeSelf) continue;
+                if (sb.Length > 0) sb.Append(", ");
+                Transform p = c.transform.parent;
+                string area = (p != null) ? p.name.Replace("_Segment", "") : "?";
+                sb.Append(area + "/" + c.gameObject.name);
+            }
+            return sb.ToString();
+        }
+        catch (Exception)
+        {
+            return "";
+        }
     }
 
     // decide e aplica a variante de uma area
@@ -716,21 +776,7 @@ public class PeakLabPlugin : BaseUnityPlugin
                 }
                 Log.LogInfo(sb.ToString());
             }
-            Type bv = AccessTools.TypeByName("BiomeVariant");
-            UnityEngine.Object[] all = Resources.FindObjectsOfTypeAll(bv);
-            System.Text.StringBuilder vb = new System.Text.StringBuilder();
-            int n = 0;
-            foreach (UnityEngine.Object o in all)
-            {
-                Component c = o as Component;
-                if (c == null || !c.gameObject.scene.IsValid()) continue;
-                if (!c.gameObject.activeSelf) continue;
-                if (n > 0) vb.Append(", ");
-                Transform p = c.transform.parent;
-                vb.Append((p != null ? p.name + "/" : "") + c.gameObject.name);
-                n++;
-            }
-            Log.LogInfo("[PeakLab] variantes ativas: " + vb);
+            Log.LogInfo("[PeakLab] variantes ativas: " + GetActiveVariantsSummary());
             LogCharacterPositions();
         }
         catch (Exception e)

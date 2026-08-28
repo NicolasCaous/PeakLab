@@ -17,6 +17,7 @@ set "CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
   -out:PeakLab.dll ^
   -r:"%M%\UnityEngine.dll" ^
   -r:"%M%\UnityEngine.CoreModule.dll" ^
+  -r:"%M%\UnityEngine.JSONSerializeModule.dll" ^
   -r:"%M%\UnityEngine.UIModule.dll" ^
   -r:"%M%\UnityEngine.UI.dll" ^
   -r:"%M%\Unity.TextMeshPro.dll" ^
@@ -28,7 +29,7 @@ set "CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
   -r:"%PEAK%\BepInEx\core\BepInEx.dll" ^
   -r:"%PEAK%\BepInEx\core\0Harmony.dll" ^
   -r:System.dll -r:System.Core.dll ^
-  PeakLab.cs
+  PeakLab.cs PeakLabHistory.cs
 
 "%CSC%" -nologo -out:tools\DumpApi.exe tools\DumpApi.cs
 

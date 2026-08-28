@@ -150,6 +150,19 @@ O daily do vanilla nunca re-sorteia nada disso.
 - O box branco da dificuldade ("Ascent") tem ~709×237 unidades de canvas; a UI do
   PeakLab é posicionada por frações do rect dele.
 
+### 3.6 Fim de run e histórico (v1.2.0)
+
+- `EndScreen : MenuWindow` é o recap pós-run universal, com `peakBanner` (vitória),
+  `deadBanner` (derrota), `yourFriendsWonBanner` (multiplayer) e `endTime` (TMP com a
+  duração). O PeakLab hooka `MenuWindow.Show`+`OnOpen` (postfix filtrado por tipo) e
+  faz poll dos banners numa coroutine → grava o desfecho.
+- **`MapHandler.JumpToSegment(Segment.Peak)` dispara a vitória REAL** — é o truque que
+  permite testar o fluxo de fim de run inteiro via autopilot, sem escalar nada.
+- Histórico em `BepInEx\PeakLabHistory.tsv` (TSV com header; uma linha por escalada;
+  `EmAndamento` vira `Abandonou` no Load da sessão seguinte). **Não usar `JsonUtility`
+  para classes do mod** — serializa `{}` vazio (limitação com assemblies externos);
+  por isso o formato é TSV manual.
+
 ## 4. Componentes do repo
 
 | Arquivo | Papel |

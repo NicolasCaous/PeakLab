@@ -45,6 +45,11 @@ desligado por padrão).
    - **`AVANCADO`** — abre os seletores `MONTANHA` / `PRAIA` / `SELVA` / `NEVE`.
      Clique para ciclar as opções (`AUTO` = deixa a seed/o jogo decidir).
 3. Aperte **START**. As escolhas do avançado ficam salvas entre sessões.
+4. **`HISTORICO`** (no painel avançado) — abre a retrospectiva das tuas escaladas:
+   data, seed, pool, cena, ascent, desfecho (**TERMINOU** / **FALHOU** / **ABANDONOU**)
+   e o tempo da run. **Clicar numa linha copia a seed de volta pro campo** — é assim
+   que você "salva" e rejoga um mapa que gostou. Os dados ficam em
+   `PEAK\BepInEx\PeakLabHistory.tsv` (abre direto no Excel).
 
 ## Configuração
 
