@@ -30,6 +30,7 @@ public class PeakAutoTestPlugin : BaseUnityPlugin
     private ConfigEntry<string> _testFitName;
     private ConfigEntry<bool> _unlitDummy;
     private ConfigEntry<bool> _unlitChar;
+    private ConfigEntry<string> _shotName;
     private bool _soloClicked;
     private bool _boarded;
 
@@ -48,6 +49,7 @@ public class PeakAutoTestPlugin : BaseUnityPlugin
         _testFitName = Config.Bind("AutoTest", "TestFitName", "Fit_Soviet", "Nome do fit a vestir no TestPassport");
         _unlitDummy = Config.Bind("AutoTest", "UnlitDummy", false, "No TestPassport: boneco em shader unlit (leitura de UV, cores puras da textura)");
         _unlitChar = Config.Bind("AutoTest", "UnlitCharacter", false, "No TestPassport: personagem REAL em shader unlit antes das selfies (leitura de UV)");
+        _shotName = Config.Bind("AutoTest", "ScreenshotName", "", "Se preenchido, tira foto do jogo (recon\\<nome>.png) 8s depois do JumpToSegment e loga a posicao do personagem");
         if (!_enabled.Value)
         {
             Log.LogInfo("[AutoTest] desligado");
@@ -504,6 +506,29 @@ public class PeakAutoTestPlugin : BaseUnityPlugin
         {
             Log.LogError("[AutoTest] JumpToSegment falhou: " + e);
         }
+        string shot = _shotName.Value.Trim();
+        if (shot.Length == 0) yield break;
+        // posicao a cada segundo: se o y despenca, o chao/paredes nao existem ali
+        for (int i = 0; i < 8; i++)
+        {
+            yield return new WaitForSeconds(1f);
+            LogPlayerPos("t+" + (i + 1) + "s apos pulo");
+        }
+        string file = System.IO.Path.Combine(BepInEx.Paths.GameRootPath,
+            System.IO.Path.Combine("BepInEx", System.IO.Path.Combine("recon", shot + ".png")));
+        ScreenCapture.CaptureScreenshot(file);
+        Log.LogInfo("[AutoTest] foto do jogo -> " + file);
+    }
+
+    private static void LogPlayerPos(string tag)
+    {
+        try
+        {
+            Character c = Character.localCharacter;
+            if (c == null) { Log.LogInfo("[AutoTest] pos " + tag + ": sem personagem local"); return; }
+            Log.LogInfo("[AutoTest] pos " + tag + ": " + c.Center.ToString("F1"));
+        }
+        catch (Exception e) { Log.LogWarning("[AutoTest] pos: " + e.Message); }
     }
 
     private IEnumerator QuitAfterDelay(string sceneName)

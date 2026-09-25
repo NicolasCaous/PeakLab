@@ -182,10 +182,25 @@ public static class PeakLabHistory
         _polling = false;
     }
 
+    // o texto es.endTime so recebe o tempo real depois de uma pausa na animacao
+    // da EndScreen; antes disso ele mostra o valor de exemplo do prefab (1:32:10).
+    // Por isso o tempo vem direto do RunManager, a mesma fonte que a tela usa.
     private static string TimeOf(EndScreen es)
     {
-        try { return (es.endTime != null) ? es.endTime.text : ""; }
-        catch (Exception) { return ""; }
+        try
+        {
+            System.Type rm = HarmonyLib.AccessTools.TypeByName("RunManager");
+            object inst = HarmonyLib.AccessTools.Field(rm, "Instance").GetValue(null);
+            if (inst == null) return "";
+            float secs = (float)HarmonyLib.AccessTools.Field(rm, "timeSinceRunStarted").GetValue(inst);
+            int s = Mathf.FloorToInt(secs);
+            return (s / 3600) + ":" + ((s / 60) % 60).ToString("00") + ":" + (s % 60).ToString("00");
+        }
+        catch (Exception e)
+        {
+            PeakLabPlugin.Log.LogWarning("[Historico] tempo da escalada: " + e.Message);
+            return "";
+        }
     }
 
     // ---------- UI ----------

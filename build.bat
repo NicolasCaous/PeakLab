@@ -24,6 +24,7 @@ set "CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
   -r:"%M%\UnityEngine.dll" ^
   -r:"%M%\UnityEngine.CoreModule.dll" ^
   -r:"%M%\UnityEngine.JSONSerializeModule.dll" ^
+  -r:"%M%\UnityEngine.PhysicsModule.dll" ^
   -r:"%M%\UnityEngine.ImageConversionModule.dll" ^
   -r:"%M%\UnityEngine.UIModule.dll" ^
   -r:"%M%\UnityEngine.UI.dll" ^
@@ -38,7 +39,7 @@ set "CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
   -r:"%PEAK%\BepInEx\core\BepInEx.dll" ^
   -r:"%PEAK%\BepInEx\core\0Harmony.dll" ^
   -r:System.dll -r:System.Core.dll ^
-  PeakLab.cs PeakLabHistory.cs PeakLabSkins.cs
+  PeakLab.cs PeakLabHistory.cs PeakLabSkins.cs PeakLabRegen.cs
 
 "%CSC%" -nologo -t:library -langversion:5 ^
   -out:PeakAutoTest.dll ^
@@ -61,6 +62,7 @@ set "CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
   PeakAutoTest.cs
 
 "%CSC%" -nologo -out:tools\DumpApi.exe tools\DumpApi.cs
+"%CSC%" -nologo -out:tools\CallGraph.exe tools\CallGraph.cs
 
 if exist PeakRecon.dll copy /Y PeakRecon.dll "%PEAK%\BepInEx\plugins\PeakRecon.dll"
 if exist PeakLab.dll copy /Y PeakLab.dll "%PEAK%\BepInEx\plugins\PeakLab.dll"

@@ -1,7 +1,7 @@
 # AGENTS.md — manual de engenharia do PeakLab
 
 Documento para um agente (ou dev) **sem contexto nenhum** se apropriar deste projeto.
-Leia inteiro antes de mexer. Última atualização: 28/08/2026, commit `9ffac32` (v1.0.0 entregue).
+Leia inteiro antes de mexer. Última atualização: 25/09/2026 (v1.5.0, regeneração por seed).
 
 ## 1. O que é isto
 
@@ -129,11 +129,50 @@ O daily do vanilla nunca re-sorteia nada disso.
   tween da cutscene apontando para objeto do segmento desativado; AINDA NÃO RESOLVIDO.
   Na 1.0.1 o swap só roda com pin explícito (a decisão automática por seed foi
   removida) e está marcado beta na UI/config.
-- **`Clear()`+`Generate()` NÃO é seguro**: `Clear()` remove conteúdo (paredes de
-  escalada) que `Generate()` não reconstrói (`WallPieceSpawner.Go` nunca é chamado
-  pelo `Generate()` — 0 hits no espião). Resultado: ilha vazia/oceano. A opção
-  `FullRegenerate` existe no config só para pesquisa, com aviso de NÃO USAR.
-  Caminho futuro promissor: chamar `Go()` dos steps certos por tipo, sem `Clear()` global.
+- **`Clear()`+`Generate()` NÃO é seguro**, e agora sabemos por quê (IL lido com
+  `tools/CallGraph`): **`LevelGeneration.Generate()` está VAZIO no build** (código só
+  de editor). O `Clear()` chama `PropGrouper.ClearAll()` na raiz do mapa e apaga tudo;
+  nada volta. A opção `FullRegenerate` existe no config só para pesquisa.
+
+### 3.4.1 Regeneração por seed (v1.5.0, `PeakLabRegen.cs`)
+
+O que o IL mostrou sobre a pipeline dos devs:
+
+- `PropGrouper.RunAll(bool)`: `Verify` → `ClearAll` → pega os `LevelGenStep` ativos
+  nos filhos, separa por `timing` do `PropGrouper` pai mais próximo (Early/Late), roda
+  `Go()` nos Early. **Os Late nunca rodam no build**: ficavam num callback de lightmap
+  (`<RunAll>g__Done`) que só o editor chamava. Não usar `RunAll` direto.
+- `LevelGenStep` (base vazia) tem só `PropSpawner`, `PropSpawner_Line`,
+  `PropSpawner_Sphere`, `DecorSpawner`, `DesertRockSpawner` e `PropDeleter`.
+  `PropSpawner.Go()` = `Clear()` (DestroyImmediate nos filhos do transform) + `Add()`.
+- **Toda aleatoriedade é `UnityEngine.Random`** (`value`/`Range`). Semear com
+  `Random.InitState` antes de rodar = resultado determinístico.
+- `WallPieceSpawner`, `RockSpawner`, `RockSpawnerGD`, `BeachSpawner`: nenhum aparece
+  nas 6 ilhas (censo em runtime). As "paredes" de escalada são `PropSpawner`s.
+- `MapGenerator`/`MapGenerationStage` existem no código mas não em nenhuma cena. Não
+  há gerador de terreno no build: o chão de cada bioma é malha fixa, igual nas 6 ilhas.
+
+O motor (`PeakLabRegen.Regenerate`, por bioma, na ordem): `Random.InitState(mix(seed,
+nome do bioma))` → `Clear()` em todos os steps ativos, de trás para frente → geometria
+não-LevelGenStep (se existir) → `Go()` dos Early na ordem da hierarquia →
+`Physics.SyncTransforms` → `Go()` dos Late → `BasicGrassSpawner.Generate` →
+`FixPhotonViews`. Biomas = `_segmentParent` ativos de `segments[]` **e de
+`variantSegments[]`** (nas ilhas Mesa o deserto ativo mora em `variantSegments`, e o
+`Snow_Segment` de `segments[]` tem ancestral desligado).
+
+Validação (autopilot, `tools/testar-regen.sh`, logs em `testlogs/regen/`):
+
+- Mesma seed duas vezes → impressão digital idêntica em todos os biomas; seed
+  diferente → impressão diferente em todos.
+- Largura ocupada e contagem de objetos iguais ao bake (log `[Compara]` com
+  `Diagnostico=true`); personagem parado no chão após `JumpToSegment` (Tropics/Alpine).
+- Variantes que vêm vazias (Pillars, RedBeach) ficam povoadas; zero exceções no Player.log.
+- Custo: 15 a 25 s a mais no loading (selva ~9 s, deserto ~10 s). Otimização possível:
+  medir quais steps dominam (provável `Physics.SyncTransforms` por spawn).
+- No deserto, `Clear` acha ~2100 steps e só ~60 sobrevivem: os outros moram dentro de
+  objetos gerados (decoração aninhada em prefabs) e morrem junto com o pai. Os prefabs
+  novos trazem os steps aninhados sem rodar, mesmo comportamento do `RunAll` original.
+  A contagem total de objetos fica igual ao bake (±2%).
 
 ### 3.5 Fluxo de embarque e UI
 
@@ -158,6 +197,10 @@ O daily do vanilla nunca re-sorteia nada disso.
   faz poll dos banners numa coroutine → grava o desfecho.
 - **`MapHandler.JumpToSegment(Segment.Peak)` dispara a vitória REAL** — é o truque que
   permite testar o fluxo de fim de run inteiro via autopilot, sem escalar nada.
+- **Tempo da escalada vem de `RunManager.Instance.timeSinceRunStarted`**, não do
+  `EndScreen.endTime`. A `EndSequenceRoutine` liga os banners, espera, e só depois
+  escreve o tempo no texto; até a v1.4.1 o mod lia o valor de exemplo do prefab e
+  gravava `1:32:10` em toda vitória (as linhas antigas do TSV têm esse valor errado).
 - Histórico em `BepInEx\PeakLabHistory.tsv` (TSV com header; uma linha por escalada;
   `EmAndamento` vira `Abandonou` no Load da sessão seguinte). **Não usar `JsonUtility`
   para classes do mod** — serializa `{}` vazio (limitação com assemblies externos);
@@ -246,6 +289,9 @@ O daily do vanilla nunca re-sorteia nada disso.
 | `PeakLab.cs` | O mod principal (UI + motor). ~500 linhas, C# 5. |
 | `PeakLabHistory.cs` | Histórico de escaladas (TSV + modal HISTORICO). |
 | `PeakLabSkins.cs` | Fit_Soviet no catálogo + capacete via `ExtendRefs`. Texturas embutidas na DLL. |
+| `PeakLabRegen.cs` | Regeneração por seed de todos os biomas + diagnóstico (censo, impressão digital, comparação com o bake). |
+| `tools/CallGraph.cs` | Leitor de IL: o que cada método do jogo chama. |
+| `tools/testar-regen.sh` | Um run do autopilot com seed/cena/pulo/pool; salva log, Player.log e foto do jogo em `testlogs/regen/`. Sobrescreve os cfgs: guarde e restaure os do Nicolas. |
 | `PeakRecon.cs` | Recon passivo: dumpa API (`types.txt`), cenas (`scene_*.txt`) e customização (`customization.txt` + `tex\*.png`). Sem Harmony. |
 | `PeakAutoTest.cs` | Piloto automático de teste (`AirportOnly`, `TestPassport`, seed, screenshots). `Enabled=false` por padrão — SEMPRE devolver para false após testes. |
 | `tools/DumpApi.cs` | Inspetor offline de `Assembly-CSharp.dll` por reflexão. Não precisa do jogo aberto. |
@@ -351,8 +397,11 @@ não aparecem inteiras num grep simples — usar `grep -A8`. Linhas-chave do Pea
 - **Quem chama o quê**: adicionar espiões Harmony (prefix logando
   `Environment.StackTrace`) — ver o `SpyPatch` no histórico do git (v0.1 do PeakLab,
   commit `302c884`; removidos na v1.0 para limpar o log).
-- Não há decompilador na máquina (sem dotnet para ilspycmd). Corpos de método são caixa
-  preta — a técnica do projeto é inferir comportamento por experimento + espião.
+- Não há decompilador na máquina (sem dotnet para ilspycmd). **`tools/CallGraph`** lê o
+  IL por reflexão e lista chamadas, campos e strings de cada método:
+  `tools\CallGraph.exe "<Managed>" PropGrouper.RunAll Tipo.*` (inclui corpos de
+  lambdas/iteradores) e `sub:LevelGenStep` (subclasses). Use antes de experimentar:
+  foi assim que se descobriu que `Generate()` é vazio e que os passos Late não rodam.
 
 ## 8. Roadmap com dicas de implementação
 
@@ -371,9 +420,8 @@ não aparecem inteiras num grep simples — usar `grep -A8`. Linhas-chave do Pea
 2. **Polir UI**: posições em `BuildUI` (frações do box). Pendente: print do Nicolas
    para ajuste fino. Quando o painel avançado abre, pode cobrir a descrição do ascent —
    avaliar esconder `ascentDesc` enquanto aberto.
-3. **Re-roll seguro de props**: investigar chamar `Go()`/`Add()` de `PropSpawner`s
-   individuais (ou `GoAll()`) SEM `Clear()` global; ou `Clear()` por step exceto walls.
-   Os espiões + `scene_Level_N.txt` dizem o que cada step possui.
+3. ~~Re-roll seguro de props~~: feito na v1.5.0 (seção 3.4.1). Pendente: reduzir o
+   tempo de loading da regeneração.
 4. **Filtrar opções por cena**: os harvests (testlogs/harvest-level*.log) mostram o
    catálogo por cena; hoje a UI oferece tudo sempre (pin inexistente só loga warning).
 5. **Ocultar "NEVE" quando montanha=Mesa** (só faz efeito com Alpine).

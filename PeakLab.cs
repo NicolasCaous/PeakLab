@@ -1,4 +1,4 @@
-// PeakLab 1.0.0 - gerador/remixador de mapas para PEAK v1.35.a
+// PeakLab 1.5.0 - gerador/remixador de mapas para PEAK v1.35.a
 // UI na boarding pass do aeroporto:
 //   SIMPLES:  campo SEED + botao ? (aleatoria). Vazio = daily vanilla.
 //   AVANCADO: seletores MONTANHA (Alpine/Mesa), PRAIA, SELVA, NEVE.
@@ -19,7 +19,7 @@ using UnityEngine.Events;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
-[BepInPlugin("nicolas.peaklab", "PeakLab", "1.4.1")]
+[BepInPlugin("nicolas.peaklab", "PeakLab", "1.5.0")]
 public class PeakLabPlugin : BaseUnityPlugin
 {
     internal static ManualLogSource Log;
@@ -28,6 +28,8 @@ public class PeakLabPlugin : BaseUnityPlugin
     internal static ConfigEntry<bool> CfgGenAfter;
     internal static ConfigEntry<bool> CfgPopulate;
     internal static ConfigEntry<string> CfgPool;
+    internal static ConfigEntry<bool> CfgRegen;
+    internal static ConfigEntry<bool> CfgDiag;
     internal static int? PendingSeed;
 
     // catalogo colhido das 6 cenas (identico em todas)
@@ -76,6 +78,12 @@ public class PeakLabPlugin : BaseUnityPlugin
         CfgPool = Config.Bind("Geracao", "PoolDeVariantes", "Padrao",
             "Padrao = a seed sorteia so variantes que os devs usaram nos 6 mapas da " +
             "v1.35.a; Todas = libera o catalogo inteiro (JellyHell, SkyJungle etc.)");
+        CfgRegen = Config.Bind("Geracao", "RegenerarBiomas", true,
+            "Com seed, apaga e gera de novo pedras, paredes, plantas e itens de todos os " +
+            "biomas com os geradores do jogo. Mesma seed = mesma ilha. Desligado = so troca " +
+            "as variantes e mantem o conteudo que vem pronto na ilha");
+        CfgDiag = Config.Bind("Geracao", "Diagnostico", false,
+            "Loga o censo dos geradores e a impressao digital de cada bioma (para testes)");
         CfgMountain = Config.Bind("Avancado", "Montanha", "Auto",
             "Auto, Alpine ou Mesa. BETA: a troca manual esta em investigacao - " +
             "se o jogador nascer na agua, volte para Auto");
@@ -111,7 +119,7 @@ public class PeakLabPlugin : BaseUnityPlugin
                 new HarmonyMethod(typeof(PeakLabPlugin).GetMethod("SetCustomForRefPrefix",
                     BindingFlags.Static | BindingFlags.NonPublic)), null);
             SceneManager.sceneLoaded += OnSceneLoaded;
-            Log.LogInfo("PeakLab 1.4.1 pronto");
+            Log.LogInfo("PeakLab 1.5.0 pronto");
         }
         catch (Exception e)
         {
@@ -404,6 +412,11 @@ public class PeakLabPlugin : BaseUnityPlugin
         if (!hasSeed && !anyPin)
         {
             Log.LogInfo("[PeakLab] " + scene.name + ": daily vanilla puro");
+            if (CfgDiag.Value)
+            {
+                PeakLabRegen.Census();
+                PeakLabRegen.LogFingerprints("vanilla");
+            }
             PeakLabHistory.StartRun(-1, scene.name, "", CurrentAscent(), GetActiveVariantsSummary());
             LogIslandState();
             return;
@@ -444,9 +457,21 @@ public class PeakLabPlugin : BaseUnityPlugin
         // micro-variantes do deserto: so no pool TODAS (no Padrao fica o bake)
         if (rollBySeed && todas) RunVariantSelectors(scene);
 
-        // 3) povoa SOMENTE os conteineres que mudaram de OFF->ON (cascas ocas);
-        // quem ja vinha ativo de fabrica mantem o bake original dos devs
-        PopulateNewlyActivated(scene, before);
+        // 3) com seed: regenera todos os biomas a partir dela. Sem seed (so pins):
+        // povoa SOMENTE os conteineres que mudaram de OFF->ON (cascas ocas) e
+        // mantem o bake original no resto
+        if (hasSeed && CfgRegen.Value)
+        {
+            if (CfgDiag.Value)
+            {
+                PeakLabRegen.Census();
+                PeakLabRegen.LogFingerprints("antes");
+            }
+            int n = PeakLabRegen.RegenerateAll(PendingSeed.Value);
+            Log.LogInfo("[PeakLab] ilha regenerada pela seed " + PendingSeed.Value + " (" + n + " geradores)");
+            PeakLabRegen.LogFingerprints("seed " + PendingSeed.Value);
+        }
+        else PopulateNewlyActivated(scene, before);
 
         // flags de pesquisa (desligadas por padrao)
         if (hasSeed)
@@ -568,8 +593,9 @@ public class PeakLabPlugin : BaseUnityPlugin
     // objetos spawnados em runtime nascem com PhotonView sem ViewID (no vanilla
     // esses spawns eram baked no editor e ganhavam ID de cena). Sem ID, RPCs como
     // o de abrir mala vao para o vacuo. Aqui registramos cada view orfao.
-    private static void FixPhotonViews(Component container)
+    internal static int FixPhotonViews(Component container)
     {
+        int registrados = 0;
         try
         {
             Photon.Pun.PhotonView[] views =
@@ -594,11 +620,13 @@ public class PeakLabPlugin : BaseUnityPlugin
             if (orfaos > 0)
                 Log.LogInfo("[PeakLab] " + container.gameObject.name + ": " + orfaos +
                             " PhotonView(s) orfao(s), " + ok + " registrado(s)");
+            registrados = ok;
         }
         catch (Exception e)
         {
             Log.LogError("[PeakLab] FixPhotonViews: " + e);
         }
+        return registrados;
     }
 
     // troca segments[slotVariante] <-> variantSegments[0] quando o alvo difere do baked

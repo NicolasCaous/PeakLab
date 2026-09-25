@@ -6,7 +6,9 @@ A v1.35.a tem só 6 ilhas fixas e o mapa diário repete a cada 6 dias, sempre co
 combo de variantes. O PeakLab reativa o sistema de variantes que veio dormente no build:
 
 - **Seed de mapa** na boarding pass do aeroporto — digite um número ou aperte `?` para
-  sortear. Mesma seed = mesmo mapa (bom para jogar "o mesmo diário" com amigos na mesma versão).
+  sortear. A seed gera de novo as pedras, formações, plantas e itens de todos os biomas
+  com os geradores do próprio jogo. Mesma seed = mesmo mapa (bom para jogar "o mesmo
+  diário" com amigos na mesma versão). O relevo do chão é fixo no jogo e não muda.
 - **Modo avançado** — escolha a montanha (**Alpine ou Mesa/deserto** — beta) e as variantes de
   **praia** (SnakeBeach, BlackSand, BlueBeach, RedBeach, JellyHell...), **selva**
   (SkyJungle, Pillars, Ivy, Thorny, Lava, Bombs...) e **neve** (Lava, Spiky, GeyserHell...).
@@ -67,14 +69,22 @@ Arquivo: `PEAK\BepInEx\config\nicolas.peaklab.cfg`
 |---|---|---|
 | `[Geracao] RandomizeBiomeVariants` | `true` | Com seed, sorteia as variantes da ilha |
 | `[Geracao] PoolDeVariantes` | `Padrao` | `Padrao` = só variantes que os devs usaram nos 6 mapas oficiais; `Todas` = catálogo completo (JellyHell, SkyJungle, BlueBeach...) |
+| `[Geracao] RegenerarBiomas` | `true` | Com seed, apaga e gera de novo o conteúdo de todos os biomas. `false` = só troca as variantes e mantém o conteúdo que vem pronto na ilha |
+| `[Geracao] Diagnostico` | `false` | Loga o censo dos geradores e a impressão digital de cada bioma (para testes) |
 | `[Geracao] FullRegenerate` | `false` | **NÃO USAR** — apaga paredes que não voltam (ilha vazia no oceano) |
 | `[Avancado] Montanha/Praia/Selva/Neve` | `Auto` | Espelham os seletores da UI |
 | `[Skins] FitSovietico` | `true` | Adiciona o uniforme soviético (com capacete) ao passaporte |
 
-Como funciona por baixo: os contêineres de variante vêm vazios de fábrica (o conteúdo
-só foi assado na variante ativa de cada cena). O PeakLab ativa a variante sorteada e
-**roda os geradores dela** — e só dela: o que já vinha ativo de fábrica mantém o bake
-original dos devs, sem duplicação.
+Como funciona por baixo: cada bioma tem dezenas de geradores dos devs (`PropSpawner`
+e parentes) que espalham pedras, formações de escalada, plantas e malas sobre o chão.
+No jogo original eles só rodaram no editor, e a ilha vem pronta. Com seed, o PeakLab
+escolhe as variantes, apaga o que os geradores de cada bioma tinham criado e roda
+todos de novo, com o sorteio do Unity iniciado pela seed e pelo nome do bioma. Cada
+bioma usa a própria sequência de sorteio, então a mesma seed gera sempre a mesma
+ilha. Sem seed, nada é regenerado.
+
+A regeneração acontece durante o carregamento da ilha e acrescenta de 15 a 25
+segundos à tela de loading (a selva e o deserto são os biomas mais pesados).
 
 ## Solução de problemas
 
@@ -98,7 +108,7 @@ build.bat
 ```
 
 Compila `PeakRecon.dll`, `PeakLab.dll`, `PeakAutoTest.dll` (e instala em
-`BepInEx\plugins\`) + `tools\DumpApi.exe`.
+`BepInEx\plugins\`) + `tools\DumpApi.exe` e `tools\CallGraph.exe`.
 
 ## Para desenvolvedores e agentes
 
